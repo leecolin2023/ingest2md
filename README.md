@@ -395,7 +395,7 @@ Markdown Writer
 ## 测试
 
 ```bash
-python -m pip install -e "[test]"
+python -m pip install -e ".[test]"
 python -m pytest -q
 ```
 
