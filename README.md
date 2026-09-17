@@ -1,5 +1,7 @@
 # url2md — 把你看到和听到的内容变成 LLM 可读 Markdown
 
+[![CI](https://github.com/leecolin2023/url2md/actions/workflows/ci.yml/badge.svg)](https://github.com/leecolin2023/url2md/actions/workflows/ci.yml)
+
 `url2md` 是一个轻量的多来源内容采集工具。输入网页链接、App 分享文案或本地音视频，它尽可能提取正文、回答、图片信息或音视频转写，并整理成**人能直接阅读、后续能批量交给大模型处理的本地 Markdown**。
 
 设计原则：
@@ -391,6 +393,13 @@ Markdown Writer
 ```
 
 没有引入 `MediaProviderManager`、Resolver Registry、manifest 或新的媒体抽象层。
+
+## 工程状态
+
+- Python `>=3.10`；依赖、构建方式和 `url2md` 命令入口统一维护在 `pyproject.toml`。
+- 本地测试使用 `pytest`；当前回归测试见 `tests/`。
+- GitHub Actions 会在 push 到 `main` 和 Pull Request 时，使用 Python 3.10 / 3.12 执行安装、编译检查、测试和 CLI smoke test。
+- CI 不下载 Playwright 浏览器或真实媒体，也不调用转写 API；这些属于在线端到端能力，不放进基础工程 CI。
 
 ## 测试
 
