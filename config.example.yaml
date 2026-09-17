@@ -1,0 +1,20 @@
+# url2md v0.5 example configuration
+api_key: ""
+base_url: "https://opencode.ai/zen/go/v1"
+model: "mimo-v2.5"
+translation_model: ""
+candidates: []
+
+output_dir: "output"
+formats: ["md"]
+chunk_seconds: 300
+limit_seconds: 0
+max_answers: 0
+keep_audio: false
+keep_chunks: false
+
+cookies_file: ""
+youtube_cookies_file: ""
+bilibili_cookies_file: ""
+zhihu_cookies_file: ""
+xiaohongshu_cookies_file: ""

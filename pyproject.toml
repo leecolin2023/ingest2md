@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "url2md"
+version = "0.5.0"
+description = "Turn web links, sharing text and local media into lightweight LLM-readable Markdown."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "beautifulsoup4",
+  "camoufox",
+  "httpx",
+  "markdownify",
+  "playwright",
+  "PyYAML",
+  "requests",
+  "yt-dlp",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+url2md = "url2md.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["url2md*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
