@@ -87,6 +87,7 @@ class XiaoyuzhouExtractor:
             if shownotes:
                 body_parts.append("## Show Notes\n\n" + shownotes)
             elif description:
+                # Keep the stable section name even for episodes that only expose a description.
                 body_parts.append("## Show Notes\n\n" + description)
             body_parts.append("## 转写正文\n\n" + render_markdown(transcript))
 
@@ -171,6 +172,7 @@ def parse_episode_page(html: str, url: str) -> dict[str, object]:
     podcast = episode.get("podcast") or {}
     podcast_title = str(podcast.get("title") or "") if isinstance(podcast, dict) else ""
     if not podcast_title:
+        # og:title commonly ends with " - 播客名 | 小宇宙"; only use it as a weak fallback.
         page_title = soup.title.get_text(" ", strip=True) if soup.title else ""
         if " - " in page_title and " | 小宇宙" in page_title:
             podcast_title = page_title.rsplit(" | 小宇宙", 1)[0].rsplit(" - ", 1)[-1].strip()

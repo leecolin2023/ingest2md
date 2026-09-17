@@ -143,6 +143,7 @@ class ZhihuExtractor:
 
 
 async def _expand_visible(page) -> None:
+    # Zhihu commonly collapses long answers behind “阅读全文”. Ignore click failures.
     try:
         await page.evaluate("""
         () => {
@@ -177,6 +178,7 @@ def _answer_id(item, qid: str, body_md: str) -> str:
         m = _ANSWER_RE.search(link.get("href", ""))
         if m and m.group(1) == qid:
             return m.group(2)
+    # Fallback: stable-enough local dedupe for rendered answers lacking canonical links.
     return "dom-" + hashlib.sha1(body_md.encode("utf-8")).hexdigest()[:16]
 
 

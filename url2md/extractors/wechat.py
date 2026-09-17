@@ -26,12 +26,14 @@ WECHAT_HOST = "mp.weixin.qq.com"
 IMAGE_CONCURRENCY = 5
 UTC_PLUS_8 = timezone(timedelta(hours=8))
 
+# create_time appears in several script styles; try all of them.
 _CREATE_TIME_PATTERNS = [
     r"create_time\s*[:=]\s*['\"]?(\d{9,11})",
     r"createTime\s*[:=]\s*['\"]?(\d{9,11})",
     r"\bct\s*[:=]\s*['\"]?(\d{9,11})",
 ]
 
+# markdownify tag whitelist: only these tags survive conversion.
 _CONVERT_TAGS = [
     "a", "blockquote", "br", "code", "del", "em", "h1", "h2", "h3", "h4",
     "h5", "h6", "hr", "img", "li", "ol", "p", "pre", "q", "s", "strong",
@@ -47,7 +49,7 @@ class WeChatExtractor:
         return host_of(url) == WECHAT_HOST
 
     async def extract(self, url: str, output_dir: Path) -> Document:
-        from camoufox.async_api import AsyncCamoufox
+        from camoufox.async_api import AsyncCamoufox  # deferred: heavy import
 
         url = normalize_wechat_url(url)
         logger.info("正在抓取: %s", url)
@@ -59,7 +61,7 @@ class WeChatExtractor:
                 await page.wait_for_selector("#js_content", timeout=10_000)
             except Exception:
                 logger.warning("#js_content 未在 10s 内出现,继续尝试解析")
-            await asyncio.sleep(2)
+            await asyncio.sleep(2)  # let remaining JS finish rendering
             html = await page.content()
 
         soup = BeautifulSoup(html, "html.parser")
@@ -106,6 +108,7 @@ class WeChatExtractor:
 
 
 def normalize_wechat_url(raw: str) -> str:
+    """Clean paste artifacts and force the https weixin host."""
     url = normalize_url(raw)
     parsed_host = host_of(url)
     if parsed_host and parsed_host != WECHAT_HOST:
@@ -124,6 +127,7 @@ def extract_metadata(soup: BeautifulSoup, html: str) -> dict[str, str | None]:
 
 
 def extract_publish_time(soup: BeautifulSoup, html: str) -> str | None:
+    # Newer articles render a visible publish time element.
     el = soup.select_one("#publish_time")
     if el and el.get_text(strip=True):
         return normalize_publish_time(el.get_text(strip=True))
@@ -134,6 +138,8 @@ def extract_publish_time(soup: BeautifulSoup, html: str) -> str | None:
 
 
 def normalize_publish_time(text: str) -> str:
+    """WeChat renders #publish_time in the browser locale, e.g.
+    ``Feb 29, 2024, 6:30 AM`` — normalize to a uniform format when parseable."""
     for fmt in ("%b %d, %Y, %I:%M %p", "%b %d, %Y %I:%M %p", "%Y-%m-%d %H:%M:%S"):
         try:
             return datetime.strptime(text, fmt).strftime("%Y-%m-%d %H:%M:%S")
@@ -151,14 +157,23 @@ def extract_create_time(html: str) -> int | None:
 
 
 def process_content(content: BeautifulSoup) -> list[dict[str, str]]:
+    """Strip noise nodes, promote lazy-loaded images, and replace WeChat code
+    snippets with placeholders so markdownify cannot mangle them.
+
+    Returns the extracted code blocks for later re-insertion.
+    """
     for selector in ("script", "style", ".qr_code_pc", ".reward_area"):
         for node in content.select(selector):
             node.decompose()
 
+    # WeChat lazy-loads images: src holds a tiny inline-SVG placeholder while
+    # data-src holds the real URL. Always promote data-src over src.
     for img in content.find_all("img"):
         data_src = img.get("data-src")
         if data_src:
             img["src"] = data_src
+    # Drop images still pointing at inline data: URIs — lazy-load spacers and
+    # tracking pixels that would leave huge data: blobs in the markdown.
     for img in content.find_all("img"):
         src = img.get("src") or ""
         if src.startswith("data:"):
@@ -172,9 +187,19 @@ def process_content(content: BeautifulSoup) -> list[dict[str, str]]:
         lang = pre.get("data-lang", "") if pre else ""
         code_el = snippet.find("code")
         raw_lines = code_el.get_text("\n").split("\n") if code_el else []
-        lines = [line for line in raw_lines if not re.match(r"^[ce]?ounter\(line", line.strip())]
+        # CSS counters leak into the text as e.g. "counter(line ...)" lines.
+        lines = [
+            line for line in raw_lines
+            if not re.match(r"^[ce]?ounter\(line", line.strip())
+        ]
         placeholder = f"CODEBLOCK-PLACEHOLDER-{len(code_blocks)}"
-        code_blocks.append({"lang": lang, "code": "\n".join(lines).strip("\n"), "placeholder": placeholder})
+        code_blocks.append({
+            "lang": lang,
+            "code": "\n".join(lines).strip("\n"),
+            "placeholder": placeholder,
+        })
+        # Swap the snippet for a plain <p> placeholder so markdownify cannot
+        # mangle whitespace inside the code.
         p = content.new_tag("p")
         p.string = placeholder
         snippet.replace_with(p)
@@ -191,12 +216,18 @@ def collect_image_urls(content: BeautifulSoup) -> list[str]:
 
 
 async def download_all_images(urls: list[str], images_dir: Path) -> dict[str, str]:
+    """Download images concurrently; returns {remote_url: relative_path}."""
     if not urls:
         return {}
     images_dir.mkdir(parents=True, exist_ok=True)
     semaphore = asyncio.Semaphore(IMAGE_CONCURRENCY)
     image_map: dict[str, str] = {}
-    async with httpx.AsyncClient(headers={"Referer": "https://mp.weixin.qq.com/"}, timeout=15, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        headers={"Referer": "https://mp.weixin.qq.com/"},
+        timeout=15,
+        follow_redirects=True,
+    ) as client:
+
         async def download(index: int, url: str) -> None:
             async with semaphore:
                 try:
@@ -209,6 +240,7 @@ async def download_all_images(urls: list[str], images_dir: Path) -> dict[str, st
                 filename = f"img_{index:03d}.{ext}"
                 (images_dir / filename).write_bytes(resp.content)
                 image_map[url] = f"images/{filename}"
+
         await asyncio.gather(*(download(i, u) for i, u in enumerate(urls, start=1)))
     return image_map
 
@@ -232,7 +264,13 @@ def image_extension(url: str, resp: httpx.Response) -> str:
 
 def convert_to_markdown(content_html: str, code_blocks: list[dict[str, str]]) -> str:
     import markdownify
-    md = markdownify.markdownify(content_html, heading_style="ATX", bullets="-", convert=_CONVERT_TAGS)
+
+    md = markdownify.markdownify(
+        content_html,
+        heading_style="ATX",
+        bullets="-",
+        convert=_CONVERT_TAGS,
+    )
     for block in code_blocks:
         fence = f"\n```{block.get('lang', '')}\n{block['code']}\n```\n"
         md = md.replace(block["placeholder"], fence)
@@ -244,5 +282,7 @@ def convert_to_markdown(content_html: str, code_blocks: list[dict[str, str]]) ->
 
 def replace_image_urls(md: str, image_map: dict[str, str]) -> str:
     for remote_url, local_path in image_map.items():
+        # Exact escaped match: remote URLs may contain ')' which breaks naive
+        # markdown-link boundary handling.
         md = re.sub(re.escape(remote_url), local_path, md)
     return md
