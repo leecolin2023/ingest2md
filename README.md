@@ -12,6 +12,14 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.8.1：YouTube 获取链路修复
+
+- 正常 YouTube ingestion **不再前置调用 `probe_video()`**；`probe_video` 只保留给 `--check-access`。
+- 先直接探测人工/自动字幕；有字幕时复用同一次 yt-dlp `info` 作为标题、频道、时长等元数据，不再额外做音频播放 probe。
+- YouTube 字幕探测与音频下载复用同一套 Cookie、重试和 JS runtime 配置。
+- 没有可用字幕时才进入音频下载 → ASR fallback。
+- 这能减少项目自身的重复 YouTube 请求，但无法替代 YouTube 对 Cookie、网络出口或 PO Token 的外部校验。
+
 ## v0.8：Local-first transcription
 
 1. **默认本地 ASR**：没有平台字幕时，默认使用 `SenseVoiceBackend`（SenseVoiceSmall ONNX）在本地 CPU 转写。
@@ -162,7 +170,9 @@ ingest2md "https://www.xiaohongshu.com/explore/xxxx" -o archive
 ingest2md "https://example.com/article" -o archive
 
 # B站 / YouTube：有字幕直接使用；无字幕默认本地 SenseVoice
-# 小宇宙 / 本地音视频：默认本地 SenseVoice
+# Bilibili 仍按平台字幕优先处理
+
+小宇宙 / 本地音视频：默认本地 SenseVoice
 ingest2md "https://www.bilibili.com/video/BVxxxxxxxxxx" -o archive
 ingest2md "https://www.youtube.com/watch?v=xxxxxxxxxxx" -o archive
 ingest2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e" -o archive
@@ -347,7 +357,9 @@ Generic Web 永远排在更具体的平台之后。当前路由优先级大致�
 v0.8 的统一逻辑：
 
 ```text
-YouTube / Bilibili
+YouTube
+  ↓
+直接字幕探测（不前置 audio probe）
   ↓
 人工字幕
   ↓没有

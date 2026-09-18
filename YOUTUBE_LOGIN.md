@@ -25,6 +25,14 @@ Cookie 文件不得提交到 Git，不应通过聊天、邮件或公开渠道转
 chmod 600 ~/.config/ingest2md/youtube-cookies.txt
 ```
 
+## v0.8.1：正常 ingestion 与诊断已分离
+
+正常执行 `ingest2md <YouTube URL>` 时不再先执行音频播放 `probe_video()`。程序会先直接尝试字幕；只有没有可用字幕时才下载音频并进入 ASR。
+
+`--check-access` 仍然保留，而且它是**更严格的独立诊断**：会验证 yt-dlp 是否能取得音频格式。因此可能出现“正常字幕 ingestion 可用，但 `--check-access` 的音频播放诊断失败”的情况，这不矛盾。
+
+这次修复只减少 ingest2md 自己制造的重复请求；如果裸 yt-dlp 在同一 Cookie / 网络出口下仍返回 `Sign in to confirm you're not a bot`，仍属于 YouTube 访问层问题。
+
 ## 零额度检测
 
 拿到 Cookie 后先执行：

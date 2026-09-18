@@ -26,6 +26,12 @@ class SubtitleTrack:
     cues: list[SubtitleCue]
 
 
+@dataclass
+class SubtitleFetchResult:
+    track: SubtitleTrack | None
+    info: dict
+
+
 _PREFERRED_LANGUAGES = (
     "zh-Hans", "zh-CN", "zh", "zh-TW", "zh-Hant",
     "en", "en-US", "en-GB",
@@ -43,6 +49,19 @@ def _cookie_options(cookies_file: str) -> dict:
     if not path.is_file():
         raise ValueError(f"Cookie 文件不存在: {path}")
     return {"cookiefile": str(path)}
+
+
+def _common_options(cookies_file: str, ydl_options: dict | None) -> dict:
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+    }
+    if ydl_options:
+        options.update(ydl_options)
+    if cookies_file and "cookiefile" not in options:
+        options.update(_cookie_options(cookies_file))
+    return options
 
 
 def _pick_language(tracks: dict) -> str:
@@ -72,11 +91,7 @@ def _time_value(value: str) -> float:
 
 
 def parse_vtt_or_srt(text: str) -> list[SubtitleCue]:
-    """Parse the common VTT/SRT subset emitted by yt-dlp.
-
-    Styling/positioning markup is intentionally discarded; ingest2md only needs
-    readable text and cue timing for its portable Markdown contract.
-    """
+    """Parse the common VTT/SRT subset emitted by yt-dlp."""
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     cues: list[SubtitleCue] = []
     i = 0
@@ -106,56 +121,59 @@ def parse_vtt_or_srt(text: str) -> list[SubtitleCue]:
     return cues
 
 
-def fetch_yt_dlp_subtitles(url: str, work_dir: Path, cookies_file: str = "") -> SubtitleTrack | None:
-    """Fetch one best subtitle track without downloading media."""
+def fetch_yt_dlp_subtitles_with_info(
+    url: str,
+    work_dir: Path,
+    cookies_file: str = "",
+    *,
+    ydl_options: dict | None = None,
+) -> SubtitleFetchResult:
+    """Fetch one best subtitle track and return the already-fetched yt-dlp info.
+
+    The first extract_info call is reused by source adapters for metadata instead
+    of triggering a separate playback probe before subtitle acquisition.
+    """
     try:
         import yt_dlp
     except ImportError as exc:
         raise ImportError("字幕探测需要 yt-dlp，请重新安装 ingest2md") from exc
 
-    probe_options = {
-        "skip_download": True,
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        **_cookie_options(cookies_file),
-    }
+    common = _common_options(cookies_file, ydl_options)
+    probe_options = {**common, "skip_download": True}
     with yt_dlp.YoutubeDL(probe_options) as ydl:
-        info = ydl.extract_info(url, download=False)
+        info = ydl.extract_info(url, download=False) or {}
 
     manual = {
-        key: value for key, value in ((info or {}).get("subtitles") or {}).items()
+        key: value for key, value in (info.get("subtitles") or {}).items()
         if key.lower() != "danmaku"
     }
-    automatic = (info or {}).get("automatic_captions") or {}
+    automatic = info.get("automatic_captions") or {}
     if manual:
         kind, tracks = "manual", manual
     elif automatic:
         kind, tracks = "auto", automatic
     else:
-        return None
+        return SubtitleFetchResult(track=None, info=info)
 
     language = _pick_language(tracks)
     if not language:
-        return None
+        return SubtitleFetchResult(track=None, info=info)
 
     work_dir.mkdir(parents=True, exist_ok=True)
     outtmpl = str(work_dir / "subtitle.%(ext)s")
     download_options = {
+        **common,
         "skip_download": True,
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
         "outtmpl": outtmpl,
         "subtitleslangs": [language],
         "subtitlesformat": "vtt/srt/best",
         "writesubtitles": kind == "manual",
         "writeautomaticsub": kind == "auto",
-        **_cookie_options(cookies_file),
     }
     before = {p.resolve() for p in work_dir.iterdir() if p.is_file()}
     with yt_dlp.YoutubeDL(download_options) as ydl:
         ydl.extract_info(url, download=True)
+
     candidates = [
         p for p in work_dir.iterdir()
         if p.is_file() and p.resolve() not in before and p.suffix.lower() in {".vtt", ".srt"}
@@ -163,9 +181,26 @@ def fetch_yt_dlp_subtitles(url: str, work_dir: Path, cookies_file: str = "") -> 
     if not candidates:
         candidates = [p for p in work_dir.iterdir() if p.suffix.lower() in {".vtt", ".srt"}]
     if not candidates:
-        return None
+        return SubtitleFetchResult(track=None, info=info)
+
     subtitle_path = max(candidates, key=lambda p: p.stat().st_mtime)
     cues = parse_vtt_or_srt(subtitle_path.read_text(encoding="utf-8", errors="replace"))
     if not cues:
-        return None
-    return SubtitleTrack(language=language, kind=kind, cues=cues)
+        return SubtitleFetchResult(track=None, info=info)
+    return SubtitleFetchResult(
+        track=SubtitleTrack(language=language, kind=kind, cues=cues),
+        info=info,
+    )
+
+
+def fetch_yt_dlp_subtitles(
+    url: str,
+    work_dir: Path,
+    cookies_file: str = "",
+    *,
+    ydl_options: dict | None = None,
+) -> SubtitleTrack | None:
+    """Backward-compatible track-only wrapper used by non-YouTube adapters."""
+    return fetch_yt_dlp_subtitles_with_info(
+        url, work_dir, cookies_file, ydl_options=ydl_options
+    ).track
