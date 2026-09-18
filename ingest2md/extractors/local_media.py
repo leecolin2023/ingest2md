@@ -1,4 +1,4 @@
-"""Existing local audio/video -> shared transcription pipeline."""
+"""Existing local audio/video -> selected ASR backend -> Markdown."""
 from __future__ import annotations
 
 import asyncio
@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ingest2md.config import Settings, load_settings
-from ingest2md.media.audio import _ffmpeg_bin, probe_duration
+from ingest2md.media.audio import probe_duration
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
 from ingest2md.transcription.writers import render_markdown
@@ -20,7 +20,13 @@ MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
 
 class LocalMediaExtractor:
     name = "本地音视频"
-    description = "本地 MP3/M4A/WAV/MP4/MKV/MOV/WebM 等 → 中文转写 Markdown"
+    description = "本地音视频 → 默认 SenseVoice 本地转写 → 原语言 Markdown"
+    acquisition_plan = (
+        "识别本地音视频",
+        "使用配置的 ASR backend（默认 SenseVoice ONNX 本地）",
+        "保留原语言转写，不做强制翻译",
+        "输出 portable Markdown",
+    )
 
     def __init__(self, settings: Settings | None = None):
         self.settings = settings
@@ -37,10 +43,6 @@ class LocalMediaExtractor:
 
     def _extract(self, reference: str, output_dir: Path) -> Document:
         settings = self.settings or load_settings()
-        if not settings.api_key:
-            raise ValueError("未配置 API Key；请设置 OPENCODE_API_KEY 或使用 --config")
-        _ffmpeg_bin("ffmpeg")
-        _ffmpeg_bin("ffprobe")
         path = Path(reference).expanduser().resolve()
         if not path.is_file() or path.suffix.lower() not in MEDIA_EXTENSIONS:
             raise ValueError(f"不是受支持的本地音视频文件: {path}")
@@ -56,15 +58,15 @@ class LocalMediaExtractor:
             metadata = [
                 ("来源", media_kind),
                 ("文件", path.name),
+                ("ASR 后端", settings.asr_backend),
                 ("时长（秒）", str(round(duration, 2)) if duration else ""),
                 ("已处理（秒）", str(transcript.processed_seconds)),
                 ("转写时间", datetime.now(timezone.utc).isoformat(timespec="seconds")),
                 ("转写模型", ", ".join(transcript.models)),
-                ("输出语言", "简体中文（先按原语言转写，再翻译）"),
-                ("时间戳精度", "切段级，非逐句；转写与翻译可能有误差"),
+                ("语言", transcript.language or "原语言"),
+                ("输出", "原语言转写（未翻译）"),
+                ("时间戳精度", transcript.timestamp_precision),
             ]
-            if transcript.translation_models:
-                metadata.append(("翻译模型", ", ".join(transcript.translation_models)))
             doc = Document(
                 title=path.stem,
                 source_url=path.as_uri(),
@@ -86,7 +88,9 @@ class LocalMediaExtractor:
             shutil.copy2(source_path, doc_dir / filename)
             doc.attachments.append(filename)
         if settings.keep_chunks:
-            for chunk in sorted((work / "chunks").glob("*.mp3")):
+            for chunk in sorted((work / "chunks").glob("*")):
+                if not chunk.is_file():
+                    continue
                 target = doc_dir / "chunks" / chunk.name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(chunk, target)

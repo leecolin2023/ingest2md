@@ -45,11 +45,20 @@ def build_parser() -> argparse.ArgumentParser:
                         help="只解释来源识别、Adapter 和处理计划，不抓取或生成文件")
     parser.add_argument("--config", help="配置文件路径（默认读取当前目录 config.yaml）")
 
-    # Video options.
-    parser.add_argument("--model", help="视频转写首选模型")
-    parser.add_argument("--translation-model", help="中文翻译模型（默认与转写模型相同）")
-    parser.add_argument("--limit-seconds", type=int, help="仅转写前 N 秒；0 为全片")
-    parser.add_argument("--chunk-seconds", type=int, help="音频切段长度（默认 300 秒）")
+    # Audio/video transcription options.
+    parser.add_argument("--asr-backend", choices=["sensevoice", "openai", "llm"],
+                        help="ASR 后端；默认 sensevoice 本地转写")
+    parser.add_argument("--asr-language", help="ASR 语言；默认 auto")
+    parser.add_argument("--limit-seconds", type=int, help="仅处理前 N 秒；0 为全片")
+    parser.add_argument("--sensevoice-model-dir", help="本地 SenseVoiceSmall 模型目录；为空时首次使用自动下载")
+    parser.add_argument("--sensevoice-chunk-seconds", type=int, help="SenseVoice WAV 切片秒数（5–30，默认 20）")
+    parser.add_argument("--openai-asr-base-url", help="OpenAI-compatible ASR API base URL")
+    parser.add_argument("--openai-asr-api-key", help="OpenAI-compatible ASR API Key")
+    parser.add_argument("--openai-asr-model", help="OpenAI-compatible ASR 模型")
+    parser.add_argument("--llm-base-url", help="多模态 LLM API base URL")
+    parser.add_argument("--llm-api-key", help="多模态 LLM API Key")
+    parser.add_argument("--llm-model", "--model", dest="llm_model", help="多模态 LLM 音频转写模型")
+    parser.add_argument("--llm-api", choices=["chat", "responses"], help="多模态 LLM API 类型")
     parser.add_argument("--check-access", action="store_true",
                         help="仅检测 YouTube 元数据/音轨/Cookie/JS Runtime")
     parser.add_argument("--keep-audio", action=argparse.BooleanOptionalAction, default=None)
@@ -104,10 +113,18 @@ def main(argv: list[str] | None = None) -> int:
         settings = load_settings(
             args.config,
             output_dir=args.output,
-            model=args.model,
-            translation_model=args.translation_model,
+            asr_backend=args.asr_backend,
+            asr_language=args.asr_language,
             limit_seconds=args.limit_seconds,
-            chunk_seconds=args.chunk_seconds,
+            sensevoice_model_dir=args.sensevoice_model_dir,
+            sensevoice_chunk_seconds=args.sensevoice_chunk_seconds,
+            openai_asr_base_url=args.openai_asr_base_url,
+            openai_asr_api_key=args.openai_asr_api_key,
+            openai_asr_model=args.openai_asr_model,
+            llm_base_url=args.llm_base_url,
+            llm_api_key=args.llm_api_key,
+            llm_model=args.llm_model,
+            llm_api=args.llm_api,
             cookies_file=args.cookies_file,
             youtube_cookies_file=args.youtube_cookies_file,
             bilibili_cookies_file=args.bilibili_cookies_file,

@@ -1,25 +1,17 @@
-"""Shared Chinese video-document presentation and media retention."""
+"""Shared media presentation helpers; v0.8 keeps source language unchanged."""
 import shutil
 from pathlib import Path
 
 from ingest2md.config import Settings
 from ingest2md.model import Document
-from ingest2md.transcription.translation import make_translator, translate_text
 
 
-def localize_metadata(doc: Document, description: str, settings: Settings) -> None:
-    translator = make_translator(settings)
+def attach_video_description(doc: Document, description: str) -> None:
     doc.original_title = doc.title
     doc.original_description = description
-    doc.title = translate_text(doc.title, translator).replace("\n", " ")
     if description.strip():
-        translated = translate_text(description, translator)
-        doc.body_md = "> 视频简介：" + translated.replace("\n", " ") + "\n\n" + doc.body_md
-    doc.metadata.append(("输出语言", "简体中文（先按原语言转写，再翻译）"))
-    if doc.transcript:
-        models = list(dict.fromkeys(doc.transcript.translation_models + translator.used_models))
-        doc.transcript.translation_models = models
-        doc.metadata.append(("翻译模型", ", ".join(models)))
+        doc.body_md = "> 视频简介：" + description.replace("\n", " ") + "\n\n" + doc.body_md
+    doc.metadata.append(("输出", "原语言内容（未翻译）"))
 
 
 def retain_media(doc: Document, audio_path: str, work: Path,
@@ -31,7 +23,9 @@ def retain_media(doc: Document, audio_path: str, work: Path,
         shutil.copy2(audio_path, doc_dir / filename)
         doc.attachments.append(filename)
     if settings.keep_chunks:
-        for chunk in sorted((work / "chunks").glob("*.mp3")):
+        for chunk in sorted((work / "chunks").glob("*")):
+            if not chunk.is_file():
+                continue
             target = doc_dir / "chunks" / chunk.name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(chunk, target)
