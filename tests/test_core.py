@@ -186,3 +186,172 @@ def test_netscape_cookie_parser_regression(tmp_path: Path):
     assert len(items) == 1
     assert items[0]["name"] == "sid"
     assert items[0]["secure"] is True
+
+
+def test_document_routes_before_generic(tmp_path: Path):
+    from ingest2md.extractors.document import DocumentExtractor
+
+    pdf = tmp_path / "report.pdf"
+    pdf.write_bytes(b"%PDF-fake")
+    reference = normalize_reference(str(pdf))
+    assert isinstance(find_extractor(reference), DocumentExtractor)
+    assert isinstance(find_extractor("https://example.com/report.docx"), DocumentExtractor)
+
+
+def test_explain_route_is_dry_and_source_aware():
+    from ingest2md.router import explain_route, format_route_explanation
+
+    report = explain_route("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    assert report["source"] == "YouTube 视频"
+    assert report["adapter"] == "YouTubeExtractor"
+    assert any("字幕" in step for step in report["plan"])
+    text = format_route_explanation(report)
+    assert "dry-run" in text
+    assert "未抓取、未下载、未调用模型" in text
+
+
+def test_generic_web_prefers_trafilatura(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    monkeypatch.setitem(sys.modules, "trafilatura", SimpleNamespace(
+        extract=lambda html, **kwargs: "# Trafilatura\n\nclean body"
+    ))
+    html = "<html><head><title>A</title></head><body><article>legacy body</article></body></html>"
+    doc = parse_web_page(html, "https://example.com/article")
+    assert doc.body_md.startswith("# Trafilatura")
+    assert "clean body" in doc.body_md
+
+
+def test_subtitle_parser_and_grouping():
+    from ingest2md.media.subtitles import SubtitleTrack, parse_vtt_or_srt
+    from ingest2md.transcription.subtitles import subtitles_to_transcript
+
+    vtt = """WEBVTT
+
+00:00:00.000 --> 00:00:02.000
+Hello
+
+00:00:02.000 --> 00:00:04.000
+world
+"""
+    cues = parse_vtt_or_srt(vtt)
+    assert [cue.text for cue in cues] == ["Hello", "world"]
+
+    class FakeTranslator:
+        used_models = ["fake-translate"]
+        def translate(self, text):
+            return "中:" + text
+
+    track = SubtitleTrack(language="en", kind="manual", cues=cues)
+    result = subtitles_to_transcript(
+        track, Settings(api_key="test", chunk_seconds=300), translator=FakeTranslator()
+    )
+    assert result.models == ["manual-subtitle:en"]
+    assert result.timestamp_precision == "subtitle-window"
+    assert result.segments[0].text == "中:Hello world"
+
+
+def test_youtube_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
+    import ingest2md.extractors.youtube as yt
+    from ingest2md.media.subtitles import SubtitleCue, SubtitleTrack
+
+    track = SubtitleTrack("en", "manual", [SubtitleCue(0, 10, "hello")])
+    monkeypatch.setattr(yt.source, "probe_video", lambda url, cookies: {
+        "id": "dQw4w9WgXcQ", "title": "Demo", "uploader": "Channel",
+        "duration": 10, "desc": "", "url": url, "audio_formats": 1,
+    })
+    monkeypatch.setattr(yt, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: track)
+    transcript = TranscriptResult([Segment(0, 10, "你好", "hello")], ["manual-subtitle:en"], 10,
+                                  timestamp_precision="subtitle-window")
+    monkeypatch.setattr(yt, "subtitles_to_transcript", lambda *args, **kwargs: transcript)
+    monkeypatch.setattr(yt, "transcribe_audio", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("ASR should not run when subtitles exist")
+    ))
+    monkeypatch.setattr(yt, "localize_metadata", lambda doc, desc, settings: None)
+
+    settings = Settings(api_key="test", output_dir=str(tmp_path))
+    doc = asyncio.run(yt.YouTubeExtractor(settings).extract(
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ", tmp_path
+    ))
+    assert doc.transcript.models == ["manual-subtitle:en"]
+    assert dict(doc.metadata)["内容获取"].startswith("平台字幕")
+
+
+def test_youtube_without_subtitle_falls_back_to_asr(tmp_path: Path, monkeypatch):
+    import ingest2md.extractors.youtube as yt
+
+    monkeypatch.setattr(yt.source, "probe_video", lambda url, cookies: {
+        "id": "dQw4w9WgXcQ", "title": "Demo", "uploader": "Channel",
+        "duration": 10, "desc": "", "url": url, "audio_formats": 1,
+    })
+    monkeypatch.setattr(yt, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: None)
+    monkeypatch.setattr(yt, "_ffmpeg_bin", lambda name: name)
+    audio = tmp_path / "audio.m4a"
+    audio.write_bytes(b"fake")
+    monkeypatch.setattr(yt.source, "download_video", lambda *args, **kwargs: ({
+        "id": "dQw4w9WgXcQ", "title": "Demo", "uploader": "Channel",
+        "duration": 10, "desc": "", "url": args[0],
+    }, str(audio)))
+    transcript = TranscriptResult([Segment(0, 10, "你好", "hello")], ["mock-asr"], 10)
+    called = {"asr": False}
+    def fake_asr(*args, **kwargs):
+        called["asr"] = True
+        return transcript
+    monkeypatch.setattr(yt, "transcribe_audio", fake_asr)
+    monkeypatch.setattr(yt, "localize_metadata", lambda doc, desc, settings: None)
+    monkeypatch.setattr(yt, "retain_media", lambda *args, **kwargs: None)
+
+    settings = Settings(api_key="test", output_dir=str(tmp_path))
+    doc = asyncio.run(yt.YouTubeExtractor(settings).extract(
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ", tmp_path
+    ))
+    assert called["asr"] is True
+    assert dict(doc.metadata)["内容获取"] == "音频下载 + ASR fallback"
+
+
+def test_bilibili_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
+    import ingest2md.extractors.bilibili as bili
+    from ingest2md.media.subtitles import SubtitleCue, SubtitleTrack
+
+    monkeypatch.setattr(bili.source, "resolve_video", lambda url: ("BV1xx411c7mD", 1))
+    monkeypatch.setattr(bili.source, "fetch_meta", lambda bvid, part: {
+        "title": "Demo", "uploader": "UP", "duration": 10, "desc": "",
+        "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=1",
+    })
+    track = SubtitleTrack("zh-Hans", "manual", [SubtitleCue(0, 10, "你好")])
+    monkeypatch.setattr(bili, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: track)
+    transcript = TranscriptResult([Segment(0, 10, "你好", "你好")], ["manual-subtitle:zh-Hans"], 10,
+                                  timestamp_precision="subtitle-window")
+    monkeypatch.setattr(bili, "subtitles_to_transcript", lambda *args, **kwargs: transcript)
+    monkeypatch.setattr(bili, "transcribe_audio", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("ASR should not run when subtitles exist")
+    ))
+    monkeypatch.setattr(bili, "localize_metadata", lambda doc, desc, settings: None)
+
+    settings = Settings(api_key="test", output_dir=str(tmp_path))
+    doc = asyncio.run(bili.BilibiliExtractor(settings).extract(
+        "https://www.bilibili.com/video/BV1xx411c7mD", tmp_path
+    ))
+    assert doc.transcript.models == ["manual-subtitle:zh-Hans"]
+    assert dict(doc.metadata)["内容获取"].startswith("平台字幕")
+
+
+def test_document_adapter_delegates_to_markitdown(tmp_path: Path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from ingest2md.extractors.document import DocumentExtractor
+
+    class FakeMarkItDown:
+        def __init__(self, enable_plugins=False):
+            assert enable_plugins is False
+        def convert(self, source):
+            return SimpleNamespace(title="Converted", markdown="# Body\n\nTable")
+
+    monkeypatch.setitem(sys.modules, "markitdown", SimpleNamespace(MarkItDown=FakeMarkItDown))
+    docx = tmp_path / "demo.docx"
+    docx.write_bytes(b"fake")
+    doc = asyncio.run(DocumentExtractor().extract(str(docx), tmp_path))
+    assert doc.title == "Converted"
+    assert doc.body_md.startswith("# Body")
+    assert dict(doc.metadata)["转换后端"] == "Microsoft MarkItDown"

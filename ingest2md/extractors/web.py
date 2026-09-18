@@ -28,7 +28,12 @@ _USER_AGENT = (
 
 class GenericWebExtractor:
     name = "普通网页"
-    description = "普通 http/https 网页 → 主正文 Markdown"
+    description = "普通 http/https 网页 → Trafilatura 主正文 Markdown"
+    acquisition_plan = (
+        "HTTP 获取页面",
+        "Trafilatura 提取主正文",
+        "正文不足时使用现有浏览器渲染后再次提取",
+    )
 
     def match(self, url: str) -> bool:
         return url.startswith(("http://", "https://")) and bool(host_of(url))
@@ -105,13 +110,26 @@ def parse_web_page(html: str, url: str) -> Document:
     )
     author = _meta(soup, ("name", "author"), ("property", "article:author"))
     published = _meta(soup, ("property", "article:published_time"), ("name", "date"))
-    node = _best_content_node(soup)
-    # Resolve relative links/images before Markdown conversion.
-    for el in node.select("a[href]"):
-        el["href"] = urljoin(url, el.get("href", ""))
-    for el in node.select("img[src]"):
-        el["src"] = urljoin(url, el.get("src", ""))
-    body = clean_fragment(str(node))
+    body = ""
+    try:
+        from trafilatura import extract as trafilatura_extract
+        body = (trafilatura_extract(
+            html, url=url, output_format="markdown",
+            include_links=True, include_images=True, include_tables=True,
+        ) or "").strip()
+    except ImportError:
+        logger.warning("Trafilatura 未安装，临时退回旧正文提取；请重新安装 ingest2md")
+    except Exception as exc:
+        logger.info("Trafilatura 未取得正文，使用轻量旧逻辑兜底: %s", exc)
+
+    if not body:
+        node = _best_content_node(soup)
+        # Legacy fallback only: resolve relative links/images before Markdown conversion.
+        for el in node.select("a[href]"):
+            el["href"] = urljoin(url, el.get("href", ""))
+        for el in node.select("img[src]"):
+            el["src"] = urljoin(url, el.get("src", ""))
+        body = clean_fragment(str(node))
     if not body:
         raise RuntimeError("未能从网页提取可读正文")
     metadata = [("来源", host_of(url))]

@@ -1,6 +1,6 @@
 ---
 name: ingest2md
-description: 把网页链接、App 分享文案和本地音视频转换为本地、可直接阅读并可批量交给 LLM 的 Markdown 语料。支持微信公众号、知乎、小红书、Bilibili、YouTube、小宇宙、普通网页和本地音视频；抖音/视频号可识别但暂不自动获取媒体。
+description: 把网页链接、App 分享文案和本地音视频转换为本地、可直接阅读并可批量交给 LLM 的 Markdown 语料。支持微信公众号、知乎、小红书、Bilibili、YouTube、小宇宙、普通网页、本地音视频和可选 PDF/Office 文档；抖音/视频号可识别但暂不自动获取媒体。
 ---
 
 # ingest2md — Content Reference → LLM Markdown Corpus
@@ -45,10 +45,11 @@ ingest2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
 - 微信：文章正文 + 本地图片。
 - 知乎：问题 + 尽可能多回答，合并成一个 Markdown；不是只保存当前回答。
 - 小红书：正文 + 当前可取得的笔记图片；默认不跑 OCR/Vision。
-- B站/YouTube：音频按原语言转写，再翻译为简体中文。
+- B站/YouTube：优先使用平台人工/自动字幕；没有字幕时才下载音频进入 ASR，再统一翻译为简体中文。
 - 小宇宙：节目简介 / Show Notes + 公开音频转写；转写正文为简体中文。
 - 本地音视频：直接复用媒体切片 → 原语言转写 → 中文翻译链路。
-- 普通网页：提取主要正文。
+- 普通网页：HTTP 获取后优先用 Trafilatura 提取正文，必要时才用浏览器 fallback。
+- PDF/DOCX/PPTX/XLSX：交给可选的 Microsoft MarkItDown Adapter，不自行实现文档解析。
 
 ## Content Reference 规则
 
@@ -131,6 +132,14 @@ ingest2md "<知乎URL>" --zhihu-cookies-file zhihu-cookies.txt
 ingest2md "<小红书URL>" --xiaohongshu-cookies-file xhs-cookies.txt
 ingest2md "<YouTubeURL>" --youtube-cookies-file youtube-cookies.txt
 ```
+
+## 路由解释
+
+```bash
+ingest2md "<Content Reference>" --explain
+```
+
+只解释输入类型、识别来源、Adapter 与处理计划；不抓取、不下载、不调用模型，也不生成文件。
 
 ## 额外产物只有用户需要时才开
 

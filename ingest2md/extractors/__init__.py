@@ -4,6 +4,7 @@ from __future__ import annotations
 from ingest2md.extractors.base import Extractor
 from ingest2md.extractors.deferred_media import DeferredMediaExtractor
 from ingest2md.extractors.local_media import LocalMediaExtractor
+from ingest2md.extractors.document import DocumentExtractor
 from ingest2md.extractors.bilibili import BilibiliExtractor
 from ingest2md.extractors.wechat import WeChatExtractor
 from ingest2md.extractors.xiaoyuzhou import XiaoyuzhouExtractor
@@ -15,6 +16,7 @@ from ingest2md.extractors.web import GenericWebExtractor
 _EXTRACTORS: list[Extractor] = [
     DeferredMediaExtractor(),
     LocalMediaExtractor(),
+    DocumentExtractor(),
     WeChatExtractor(),
     BilibiliExtractor(),
     YouTubeExtractor(),

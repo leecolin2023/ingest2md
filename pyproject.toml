@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ingest2md"
-version = "0.6.0"
+version = "0.7.0"
 description = "Turn web links, sharing text and local media into lightweight LLM-readable Markdown."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,11 +16,13 @@ dependencies = [
   "playwright",
   "PyYAML",
   "requests",
+  "trafilatura",
   "yt-dlp",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+documents = ["markitdown[pdf,docx,pptx,xlsx]"]
 
 [project.scripts]
 ingest2md = "ingest2md.cli:main"

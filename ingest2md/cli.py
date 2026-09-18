@@ -18,7 +18,9 @@ from ingest2md.extractors.zhihu import ZhihuExtractor
 from ingest2md.extractors.xiaohongshu import XiaohongshuExtractor
 from ingest2md.media import youtube as youtube_source
 from ingest2md.model import write_document
-from ingest2md.router import UnsupportedURLError, find_extractor, normalize_reference
+from ingest2md.router import (
+    UnsupportedURLError, explain_route, find_extractor, format_route_explanation, normalize_reference,
+)
 
 logger = logging.getLogger("ingest2md")
 
@@ -39,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", "--output-dir", default=None,
                         help="输出根目录（默认 ./output）")
     parser.add_argument("-v", "--verbose", action="store_true", help="输出调试日志")
+    parser.add_argument("--explain", action="store_true",
+                        help="只解释来源识别、Adapter 和处理计划，不抓取或生成文件")
     parser.add_argument("--config", help="配置文件路径（默认读取当前目录 config.yaml）")
 
     # Video options.
@@ -73,6 +77,14 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(message)s",
     )
+
+    if args.explain:
+        try:
+            print(format_route_explanation(explain_route(args.source)))
+            return EXIT_OK
+        except UnsupportedURLError as exc:
+            print(exc, file=sys.stderr)
+            return EXIT_UNSUPPORTED
 
     try:
         reference = normalize_reference(args.source)

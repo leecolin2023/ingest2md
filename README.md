@@ -10,7 +10,14 @@
 
 默认只生成 Markdown。只有图片需要本地化时才附带 `images/`；JSON、SRT、TXT、媒体副本和切片都必须显式请求。
 
-v0.6 的边界也很明确：**优先扩大低成本、高价值的信息入口；如果某个平台需要复杂登录态、私有签名、解密或专用基础设施才能稳定支持，则先识别、明确提示，但不强行接入。**
+v0.7 的边界继续保持明确：**优先扩大低成本、高价值的信息入口；如果某个平台需要复杂登录态、私有签名、解密或专用基础设施才能稳定支持，则先识别、明确提示，但不强行接入。**
+
+## v0.7：把现有能力变聪明
+
+1. **YouTube / Bilibili 字幕优先**：优先使用平台人工字幕，其次自动字幕；只有没有可用字幕时才下载音频进入 ASR。
+2. **Generic Web 使用 Trafilatura**：HTTP 获取后优先交给 Trafilatura 抽取主正文，正文不足时才使用现有浏览器渲染；旧轻量解析保留为兜底。
+3. **PDF / DOCX / PPTX / XLSX**：新增 Document Adapter，识别后委托 Microsoft MarkItDown；通过 `ingest2md[documents]` 按需安装，不自行实现文档解析。
+4. **`--explain`**：只解释输入类型、识别来源、Adapter 和处理计划，不抓取、不下载、不调用模型，也不生成文件。
 
 ## v0.6 工程重命名
 
@@ -32,8 +39,8 @@ v0.6 的边界也很明确：**优先扩大低成本、高价值的信息入口�
 | 微信公众号 | ✅ | 单篇文章 | Markdown + `images/` |
 | 知乎 | ✅ | **一个问题 + 尽可能多的回答** | 单个 Markdown |
 | 小红书 | ✅ 轻量 | 单篇笔记正文 + 可取得图片 | Markdown + `images/`（有图片时） |
-| Bilibili | ✅ | 单视频/分P → 原语言转写 → 中文 | 单个 Markdown |
-| YouTube | ✅ | 单视频 → 原语言转写 → 中文 | 单个 Markdown |
+| Bilibili | ✅ | 单视频/分P → 字幕优先 → ASR fallback → 中文 | 单个 Markdown |
+| YouTube | ✅ | 单视频 → 字幕优先 → ASR fallback → 中文 | 单个 Markdown |
 | **小宇宙** | **✅ v0.6** | Show Notes + 播客转写 | 单个 Markdown |
 | **本地音视频** | **✅ v0.6** | 本地媒体 → 原语言转写 → 中文 | 单个 Markdown |
 | 普通网页 | ✅ | 主要正文 | 单个 Markdown |
@@ -65,17 +72,24 @@ python -m playwright install chromium
 python -m camoufox fetch
 ```
 
-音视频通道需要 `ffmpeg` 与 `ffprobe`。YouTube 建议安装当前版 Deno 或 Node.js；遇到登录/机器人校验时提供 Cookie。
+音视频在需要 ASR fallback 时使用 `ffmpeg` 与 `ffprobe`。YouTube 建议安装当前版 Deno 或 Node.js；遇到登录/机器人校验时提供 Cookie。
+
+文档能力按需安装，不进入默认依赖：
+
+```bash
+python -m pip install -e ".[documents]"
+```
 
 ## 输入已经不是只有 URL
 
-v0.6 把输入统一为：
+v0.7 把输入统一为：
 
 ```text
 Content Reference
 = URL
 | 分享文案中的 URL
 | 本地媒体路径
+| 本地 PDF / DOCX / PPTX / XLSX
 | BV号
 ```
 
@@ -93,6 +107,9 @@ ingest2md "./podcast.m4a"
 
 # 本地视频
 ingest2md "D:\Downloads\douyin.mp4"
+
+# 本地文档（需安装 documents extra）
+ingest2md "./report.pdf"
 
 # B站 BV 号
 ingest2md "BV1xx411c7mD"
@@ -234,6 +251,14 @@ Markdown
 
 `--keep-audio` 对网络视频/播客仍保留下载音频；对本地媒体则保留一份 `source_media.<ext>` 副本。`--keep-chunks` 会保留 MP3 切片。
 
+## `--explain`：只解释路由，不执行
+
+```bash
+ingest2md "https://www.youtube.com/watch?v=VIDEO_ID" --explain
+```
+
+会显示输入类型、规范化结果、识别来源、Adapter 和处理计划。该模式不会抓取内容、下载媒体、调用模型或生成 Markdown，适合用户和 Agent 在真正执行前确认路由。
+
 ## 输出规则：默认只有一个主 Markdown
 
 文本型内容默认直接落在输出根目录：
@@ -289,7 +314,7 @@ ingest2md "./video.mp4" --keep-audio --keep-chunks
 
 ## 普通网页
 
-普通网页先用 HTTP 直接获取并选择最像正文的 `article/main/content` 区域；如果正文过短或 HTTP 获取失败，再退回 Playwright 浏览器渲染。
+普通网页先用 HTTP 获取，再由 **Trafilatura** 提取主正文；如果结果为空则使用现有轻量 HTML 解析兜底。如果正文仍明显不足或 HTTP 获取失败，才退回 Playwright 浏览器渲染后再次抽取。`ingest2md` 不自行建设更重的 crawler/browser 基础设施。
 
 Generic Web 永远排在更具体的平台之后。v0.6 路由优先级大致为：
 
@@ -302,10 +327,12 @@ Generic Web 永远排在更具体的平台之后。v0.6 路由优先级大致为
 
 ## 视频 / 播客转写
 
-B站、YouTube、小宇宙和本地媒体共用核心转写服务：
+B站和 YouTube 在 v0.7 先走字幕优先；小宇宙和本地媒体仍进入核心转写服务：
 
 ```text
-媒体输入 → ffmpeg 切段 → 原语言转写 → 中文翻译 → Markdown
+YouTube/B站 → 人工字幕 → 自动字幕 →（都没有）音频 + ASR
+
+小宇宙/本地媒体 → ffmpeg 切段 → 原语言转写 → 中文翻译 → Markdown
 ```
 
 Markdown 默认按切段时间组织：
@@ -414,7 +441,7 @@ python -m pip install -e ".[test]"
 python -m pytest -q
 ```
 
-v0.6 当前随包新增 16 项回归/增量测试，覆盖：
+v0.7 当前共 24 项回归/增量测试，覆盖：
 
 - 分享文案提取第一条 URL；
 - 普通 URL 与 BV 号兼容；
@@ -424,7 +451,11 @@ v0.6 当前随包新增 16 项回归/增量测试，覆盖：
 - 小宇宙调用现有 `transcribe_audio()`；
 - 默认只输出 Markdown；
 - opt-in JSON；
-- Generic Web 正文；
+- Generic Web 正文与 Trafilatura 优先；
+- PDF/DOCX/PPTX/XLSX 文档路由与 MarkItDown 委托；
+- `--explain` dry-run 路由说明；
+- YouTube/B站字幕优先且字幕存在时跳过 ASR；
+- YouTube 无字幕时 ASR fallback；
 - 视频时间段标题；
 - Netscape Cookie 解析。
 
@@ -438,5 +469,6 @@ v0.6 当前随包新增 16 项回归/增量测试，覆盖：
 - 小宇宙依赖公开 episode 页面中可取得的音频 URL；如果平台未来移除公开 `__NEXT_DATA__` / `og:audio` / CDN 地址，需要调整解析器。
 - 抖音、视频号当前只识别来源，不维护私有签名、复杂登录、解密或专用 Sidecar。
 - 本地媒体必须是实际存在的文件；不存在的“路径字符串”不会进入本地媒体通道。
-- 普通网页正文抽取采用启发式，复杂交互网站可能带少量导航噪声或漏内容。
+- 普通网页以 Trafilatura 为主，但复杂交互网站仍可能需要浏览器 fallback，且不承诺等同专业 crawler。
+- PDF/DOCX/PPTX/XLSX 由 MarkItDown 提供实际转换能力，需要安装 `ingest2md[documents]`；ingest2md 本身不实现文档解析。
 - 音视频转写和翻译仍可能有模型误差；需要精确字幕时显式输出 SRT/JSON 并复核。
