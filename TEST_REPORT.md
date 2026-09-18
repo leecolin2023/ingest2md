@@ -1,4 +1,4 @@
-# ingest2md v0.8.1 Test Report
+# ingest2md v0.8.2 Test Report
 
 测试日期：2026-09-18
 
@@ -7,7 +7,7 @@
 GitHub Actions 在 Python 3.10 与 3.12 均通过：
 
 ```text
-30 passed
+32 passed
 ```
 
 执行链路：
@@ -22,46 +22,45 @@ ingest2md --help
 PR CI run：
 
 ```text
-35325059825
+35332827238
 ```
 
-## v0.8.1 YouTube 获取链路修复
+## v0.8.2 Maintenance cleanup
 
-1. 正常 YouTube ingestion 不再前置调用 `probe_video()`；
-2. `probe_video()` 只保留给 `--check-access` 的独立音频播放诊断；
-3. YouTube 首先直接探测人工/自动字幕；
-4. 有字幕时复用字幕探测阶段已经取得的 yt-dlp `info` 作为标题、频道、时长、简介等元数据，不额外发起 metadata/audio probe；
-5. 字幕探测与 YouTube 音频下载复用同一套 Cookie、重试、JS runtime 配置；
-6. 没有可用字幕或字幕探测失败时，才进入音频下载 → ASR fallback；
-7. 新增回归断言：字幕可用时调用 `probe_video`、下载音频或运行 ASR 均视为测试失败；
-8. 新增 metadata-from-info 回归，确保字幕路径可以完全复用现有 yt-dlp info。
+本版不新增产品能力，不改变用户可见行为，重点消除双重维护点：
 
-## v0.8 Local-first 回归
+1. 本地媒体与网络媒体统一复用 `retain_media()`，本地媒体通过 `retained_filename` 保持原来的 `source_media.<ext>` 命名；
+2. 新增共享 `parse_netscape_cookie_file()`，Playwright Cookie 与 YouTube Cookie 校验均基于同一 parser；
+3. Extractor registry 同时维护路由顺序与 Settings 注入；CLI 不再维护一份 Bilibili/YouTube/Xiaoyuzhou/LocalMedia/Zhihu/Xiaohongshu 类型名单；
+4. YouTube 的严格音频访问诊断改名为 `probe_playback_access()`，降低被误用到正常 ingestion 主链路的风险；
+5. Web/Zhihu/Xiaohongshu/Xiaoyuzhou/media downloader/Bilibili 统一使用 `DEFAULT_USER_AGENT`；
+6. Generic Web/Xiaohongshu/Xiaoyuzhou 的 HTML meta 读取统一到 `htmlutils.meta_content()`。
 
-继续覆盖：
+## 新增回归
 
-- 默认 `asr_backend=sensevoice`；
-- `sensevoice / openai / llm` 三种 ASR backend；
-- SenseVoice 自己处理 20 秒 WAV；
-- OpenAI-compatible backend 自己处理 MP3 与 `/audio/transcriptions`；
-- 字幕与 ASR 保持原语言，不强制翻译；
-- YouTube/Bilibili subtitle-first；
-- YouTube 无字幕时进入 ASR fallback；
-- Generic Web → Trafilatura；
-- PDF/Office → MarkItDown；
-- 小宇宙、本地媒体、分享文案、BV 号与 deferred media 路由；
-- Netscape Cookie 与 `--explain`。
+新增 2 项针对维护风险的测试：
 
-## 边界
+- shared Netscape parser 同时驱动 Playwright Cookie 转换与 YouTube Cookie 校验，包括 `#HttpOnly_`；
+- registry 能在不依赖 CLI 类型判断的情况下向 YouTubeExtractor 注入同一个 Settings 对象。
 
-这次修复的是 **ingest2md 自己的请求顺序与重复请求问题**，不绕过 YouTube 外部的 Cookie、网络出口、bot challenge、PO Token 或播放权限校验。
-
-如果同一环境下裸 yt-dlp 仍返回：
+因此测试数从 v0.8.1 的 30 项增加为：
 
 ```text
-Sign in to confirm you're not a bot
+32 passed
 ```
 
-则说明 YouTube 访问层仍拒绝当前 session / Cookie / 网络出口组合；v0.8.1 不会伪装成应用层已经解决该问题。
+## 保持不动的边界
 
-基础 CI 仍不下载真实 YouTube 音频，也不下载 SenseVoice 模型或调用外部付费 API。
+本版刻意没有引入：
+
+- VideoSubtitleMixin；
+- ASR backend 公共 chunk-loop 抽象；
+- generic provider headers 配置框架；
+- 对 v0.7 legacy config migration 的删除；
+- 对 subtitle wrapper / SenseVoice defensive calls / Document original_* 字段的清理。
+
+这些仍保留到确有维护收益时再处理，避免为了 DRY 引入更重抽象。
+
+## CI 边界
+
+基础 CI 仍不下载真实 YouTube/Bilibili 媒体，不下载 SenseVoiceSmall 模型，也不调用外部付费 API。当前测试验证的是路由、解析、backend 契约和此次 maintenance cleanup 的行为不变性。
