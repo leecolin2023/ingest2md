@@ -14,13 +14,14 @@ def attach_video_description(doc: Document, description: str) -> None:
     doc.metadata.append(("输出", "原语言内容（未翻译）"))
 
 
-def retain_media(doc: Document, audio_path: str, work: Path,
-                 output_dir: Path, settings: Settings) -> None:
+def retain_media(doc: Document, media_path: str, work: Path,
+                 output_dir: Path, settings: Settings,
+                 retained_filename: str | None = None) -> None:
     doc_dir = output_dir / doc.dirname
     if settings.keep_audio:
         doc_dir.mkdir(parents=True, exist_ok=True)
-        filename = "audio" + Path(audio_path).suffix
-        shutil.copy2(audio_path, doc_dir / filename)
+        filename = retained_filename or ("audio" + Path(media_path).suffix)
+        shutil.copy2(media_path, doc_dir / filename)
         doc.attachments.append(filename)
     if settings.keep_chunks:
         for chunk in sorted((work / "chunks").glob("*")):

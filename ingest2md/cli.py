@@ -9,13 +9,8 @@ from pathlib import Path
 
 from ingest2md.config import load_settings
 from ingest2md.extractors.base import SourceUnavailableError
-from ingest2md.extractors.bilibili import BilibiliExtractor
 from ingest2md.extractors.deferred_media import DeferredMediaExtractor
-from ingest2md.extractors.local_media import LocalMediaExtractor
-from ingest2md.extractors.xiaoyuzhou import XiaoyuzhouExtractor
 from ingest2md.extractors.youtube import YouTubeExtractor
-from ingest2md.extractors.zhihu import ZhihuExtractor
-from ingest2md.extractors.xiaohongshu import XiaohongshuExtractor
 from ingest2md.media import youtube as youtube_source
 from ingest2md.model import write_document
 from ingest2md.router import (
@@ -144,8 +139,7 @@ def main(argv: list[str] | None = None) -> int:
             print(youtube_source.format_access_report(report))
             return EXIT_OK if report["ok"] else EXIT_FETCH_FAILED
 
-        if isinstance(extractor, (BilibiliExtractor, YouTubeExtractor, XiaoyuzhouExtractor, LocalMediaExtractor, ZhihuExtractor, XiaohongshuExtractor)):
-            extractor = type(extractor)(settings)
+        extractor = find_extractor(reference, settings=settings)
         output_dir = Path(settings.output_dir).expanduser().resolve()
         print(f"识别为 {extractor.name}，输出目录: {output_dir}")
         doc = asyncio.run(extractor.extract(reference, output_dir))
