@@ -1,4 +1,4 @@
-# url2md v0.5 example configuration
+# ingest2md v0.6 example configuration
 api_key: ""
 base_url: "https://opencode.ai/zen/go/v1"
 model: "mimo-v2.5"

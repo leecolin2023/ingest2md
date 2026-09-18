@@ -1,9 +1,9 @@
 """Content-reference routing: normalize then dispatch to the first matching channel."""
 from __future__ import annotations
 
-from url2md.extractors import get_extractors
-from url2md.extractors.base import Extractor
-from url2md.urlutils import host_of, normalize_reference, normalize_url
+from ingest2md.extractors import get_extractors
+from ingest2md.extractors.base import Extractor
+from ingest2md.urlutils import host_of, normalize_reference, normalize_url
 
 __all__ = [
     "UnsupportedURLError", "find_extractor", "host_of", "normalize_reference", "normalize_url"

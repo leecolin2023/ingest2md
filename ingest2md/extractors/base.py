@@ -2,8 +2,8 @@
 
 To add a channel:
 
-1. Create ``url2md/extractors/<name>.py`` implementing :class:`Extractor`.
-2. Register it in ``url2md/extractors/__init__.py`` before Generic Web.
+1. Create ``ingest2md/extractors/<name>.py`` implementing :class:`Extractor`.
+2. Register it in ``ingest2md/extractors/__init__.py`` before Generic Web.
 
 Nothing else in the extraction/output pipeline needs to change.
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from url2md.model import Document
+from ingest2md.model import Document
 
 
 class SourceUnavailableError(RuntimeError):
@@ -24,7 +24,7 @@ class SourceUnavailableError(RuntimeError):
             f"已识别来源：{source_name}\n"
             "当前版本暂未接入稳定的媒体获取方式。\n"
             "建议下载视频后执行：\n"
-            f'url2md "{suggestion}"'
+            f'ingest2md "{suggestion}"'
         )
 
 

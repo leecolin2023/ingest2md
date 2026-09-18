@@ -207,7 +207,7 @@ def probe_video(url: str, cookies_file: str = "") -> dict:
         from yt_dlp import YoutubeDL
         from yt_dlp.utils import DownloadError
     except ImportError as exc:
-        raise ImportError("YouTube 通道需要 yt-dlp，请重新安装 url2md") from exc
+        raise ImportError("YouTube 通道需要 yt-dlp，请重新安装 ingest2md") from exc
     try:
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -307,7 +307,7 @@ def download_video(url: str, work_dir: Path, cookies_file: str = "") -> tuple[di
         from yt_dlp import YoutubeDL
         from yt_dlp.utils import DownloadError
     except ImportError as exc:
-        raise ImportError("YouTube 通道需要 yt-dlp，请重新安装 url2md") from exc
+        raise ImportError("YouTube 通道需要 yt-dlp，请重新安装 ingest2md") from exc
     try:
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)

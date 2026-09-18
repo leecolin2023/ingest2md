@@ -1,16 +1,16 @@
 """Built-in channel registry. More specific sources must come before Generic Web."""
 from __future__ import annotations
 
-from url2md.extractors.base import Extractor
-from url2md.extractors.deferred_media import DeferredMediaExtractor
-from url2md.extractors.local_media import LocalMediaExtractor
-from url2md.extractors.bilibili import BilibiliExtractor
-from url2md.extractors.wechat import WeChatExtractor
-from url2md.extractors.xiaoyuzhou import XiaoyuzhouExtractor
-from url2md.extractors.youtube import YouTubeExtractor
-from url2md.extractors.zhihu import ZhihuExtractor
-from url2md.extractors.xiaohongshu import XiaohongshuExtractor
-from url2md.extractors.web import GenericWebExtractor
+from ingest2md.extractors.base import Extractor
+from ingest2md.extractors.deferred_media import DeferredMediaExtractor
+from ingest2md.extractors.local_media import LocalMediaExtractor
+from ingest2md.extractors.bilibili import BilibiliExtractor
+from ingest2md.extractors.wechat import WeChatExtractor
+from ingest2md.extractors.xiaoyuzhou import XiaoyuzhouExtractor
+from ingest2md.extractors.youtube import YouTubeExtractor
+from ingest2md.extractors.zhihu import ZhihuExtractor
+from ingest2md.extractors.xiaohongshu import XiaohongshuExtractor
+from ingest2md.extractors.web import GenericWebExtractor
 
 _EXTRACTORS: list[Extractor] = [
     DeferredMediaExtractor(),

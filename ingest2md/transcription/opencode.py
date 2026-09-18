@@ -6,7 +6,7 @@ import uuid
 
 import requests
 
-from url2md import __version__
+from ingest2md import __version__
 
 TRANSCRIBE_PROMPT = (
     "请自动识别这段音频中的语言，按说话者使用的原语言逐字转写全部语音内容。多语言混说也保留各自原语言。要求：\n"
@@ -35,7 +35,7 @@ class OpencodeEngine:
         self.used_models = []
         self.working = None  # 实测可用的模型配置，避免每段都重试
         self.session_id = str(uuid.uuid4())  # opencode Go 要求的稳定会话标识
-        self.user_agent = f"url2md/{__version__}"
+        self.user_agent = f"ingest2md/{__version__}"
 
     def transcribe(self, audio_path: str) -> str:
         """转写单个音频段，自动降级尝试候选模型。"""

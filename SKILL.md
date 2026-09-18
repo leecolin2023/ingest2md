@@ -1,9 +1,9 @@
 ---
-name: url2md
+name: ingest2md
 description: 把网页链接、App 分享文案和本地音视频转换为本地、可直接阅读并可批量交给 LLM 的 Markdown 语料。支持微信公众号、知乎、小红书、Bilibili、YouTube、小宇宙、普通网页和本地音视频；抖音/视频号可识别但暂不自动获取媒体。
 ---
 
-# url2md — Content Reference → LLM Markdown Corpus
+# ingest2md — Content Reference → LLM Markdown Corpus
 
 ## 何时使用
 
@@ -26,16 +26,16 @@ description: 把网页链接、App 分享文案和本地音视频转换为本地
 ## 默认调用
 
 ```bash
-url2md "<Content Reference>" -o <输出目录>
+ingest2md "<Content Reference>" -o <输出目录>
 ```
 
 例如：
 
 ```bash
-url2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e" -o archive
-url2md "6.48 复制打开抖音…… https://v.douyin.com/akR8LCIaTMI/ ……" -o archive
-url2md "./meeting.m4a" -o archive
-url2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
+ingest2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e" -o archive
+ingest2md "6.48 复制打开抖音…… https://v.douyin.com/akR8LCIaTMI/ ……" -o archive
+ingest2md "./meeting.m4a" -o archive
+ingest2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
 ```
 
 默认只有 Markdown。不要为了“结构化”主动生成 JSON、raw HTML、manifest、下载媒体等额外产物。
@@ -80,7 +80,7 @@ channels.weixin.qq.com
 已识别来源：抖音视频
 当前版本暂未接入稳定的媒体获取方式。
 建议下载视频后执行：
-url2md "/path/to/douyin.mp4"
+ingest2md "/path/to/douyin.mp4"
 ```
 
 视频号同理。
@@ -127,9 +127,9 @@ https://www.xiaoyuzhoufm.com/episode/<24位episode id>
 Cookie 使用 Netscape 格式：
 
 ```bash
-url2md "<知乎URL>" --zhihu-cookies-file zhihu-cookies.txt
-url2md "<小红书URL>" --xiaohongshu-cookies-file xhs-cookies.txt
-url2md "<YouTubeURL>" --youtube-cookies-file youtube-cookies.txt
+ingest2md "<知乎URL>" --zhihu-cookies-file zhihu-cookies.txt
+ingest2md "<小红书URL>" --xiaohongshu-cookies-file xhs-cookies.txt
+ingest2md "<YouTubeURL>" --youtube-cookies-file youtube-cookies.txt
 ```
 
 ## 额外产物只有用户需要时才开

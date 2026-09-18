@@ -12,11 +12,11 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
-from url2md.browser import load_netscape_cookies, launch_chromium
-from url2md.config import Settings, load_settings
-from url2md.htmlutils import clean_fragment
-from url2md.model import Document, sanitize_filename
-from url2md.urlutils import host_of
+from ingest2md.browser import load_netscape_cookies, launch_chromium
+from ingest2md.config import Settings, load_settings
+from ingest2md.htmlutils import clean_fragment
+from ingest2md.model import Document, sanitize_filename
+from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
 _HOSTS = {"xiaohongshu.com", "www.xiaohongshu.com", "xhslink.com", "www.xhslink.com"}

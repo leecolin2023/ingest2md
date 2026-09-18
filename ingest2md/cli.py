@@ -7,20 +7,20 @@ import logging
 import sys
 from pathlib import Path
 
-from url2md.config import load_settings
-from url2md.extractors.base import SourceUnavailableError
-from url2md.extractors.bilibili import BilibiliExtractor
-from url2md.extractors.deferred_media import DeferredMediaExtractor
-from url2md.extractors.local_media import LocalMediaExtractor
-from url2md.extractors.xiaoyuzhou import XiaoyuzhouExtractor
-from url2md.extractors.youtube import YouTubeExtractor
-from url2md.extractors.zhihu import ZhihuExtractor
-from url2md.extractors.xiaohongshu import XiaohongshuExtractor
-from url2md.media import youtube as youtube_source
-from url2md.model import write_document
-from url2md.router import UnsupportedURLError, find_extractor, normalize_reference
+from ingest2md.config import load_settings
+from ingest2md.extractors.base import SourceUnavailableError
+from ingest2md.extractors.bilibili import BilibiliExtractor
+from ingest2md.extractors.deferred_media import DeferredMediaExtractor
+from ingest2md.extractors.local_media import LocalMediaExtractor
+from ingest2md.extractors.xiaoyuzhou import XiaoyuzhouExtractor
+from ingest2md.extractors.youtube import YouTubeExtractor
+from ingest2md.extractors.zhihu import ZhihuExtractor
+from ingest2md.extractors.xiaohongshu import XiaohongshuExtractor
+from ingest2md.media import youtube as youtube_source
+from ingest2md.model import write_document
+from ingest2md.router import UnsupportedURLError, find_extractor, normalize_reference
 
-logger = logging.getLogger("url2md")
+logger = logging.getLogger("ingest2md")
 
 EXIT_OK = 0
 EXIT_FETCH_FAILED = 1
@@ -29,11 +29,11 @@ EXIT_UNSUPPORTED = 2
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="url2md",
+        prog="ingest2md",
         description=(
             "把网页链接、App 分享文案或本地音视频转换成适合人和 LLM 阅读的本地 Markdown"
         ),
-        epilog='提示：输入请用引号完整包裹，例如 url2md "https://www.zhihu.com/question/xxx" 或 url2md "./podcast.m4a"',
+        epilog='提示：输入请用引号完整包裹，例如 ingest2md "https://www.zhihu.com/question/xxx" 或 ingest2md "./podcast.m4a"',
     )
     parser.add_argument("source", help="URL、App 分享文案、本地音视频路径或 B站 BV 号")
     parser.add_argument("-o", "--output", "--output-dir", default=None,
@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         print(exc, file=sys.stderr)
         return EXIT_UNSUPPORTED
     except ImportError as exc:
-        logger.error("缺少运行依赖，请重新安装 url2md: %s", exc)
+        logger.error("缺少运行依赖，请重新安装 ingest2md: %s", exc)
         return EXIT_FETCH_FAILED
     except Exception as exc:
         logger.error("抓取/转换失败: %s", exc)

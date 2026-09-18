@@ -2,11 +2,11 @@
 from pathlib import Path
 from typing import Protocol
 
-from url2md.config import Settings
-from url2md.media.audio import chunk_audio
-from url2md.transcription.model import Segment, TranscriptResult
-from url2md.transcription.opencode import OpencodeEngine
-from url2md.transcription.translation import Translator, make_translator, translate_text
+from ingest2md.config import Settings
+from ingest2md.media.audio import chunk_audio
+from ingest2md.transcription.model import Segment, TranscriptResult
+from ingest2md.transcription.opencode import OpencodeEngine
+from ingest2md.transcription.translation import Translator, make_translator, translate_text
 import logging
 
 logger = logging.getLogger(__name__)

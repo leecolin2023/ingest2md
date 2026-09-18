@@ -32,18 +32,18 @@ jobs:
           python -m pip install -e ".[test]"
 
       - name: Compile package
-        run: python -m compileall -q url2md
+        run: python -m compileall -q ingest2md
 
       - name: Run tests
         run: python -m pytest -q
 
       - name: Verify installed CLI
         run: |
-          url2md --help >/dev/null
+          ingest2md --help >/dev/null
           python - <<'PY'
           import importlib.metadata
-          import url2md
+          import ingest2md
 
-          assert importlib.metadata.version("url2md") == url2md.__version__
-          print("url2md", url2md.__version__)
+          assert importlib.metadata.version("ingest2md") == ingest2md.__version__
+          print("ingest2md", ingest2md.__version__)
           PY

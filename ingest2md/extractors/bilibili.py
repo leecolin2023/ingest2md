@@ -7,14 +7,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from url2md.config import Settings, load_settings
-from url2md.media import bilibili as source
-from url2md.media.audio import _ffmpeg_bin
-from url2md.model import Document
-from url2md.extractors.video import localize_metadata, retain_media
-from url2md.transcription.service import transcribe_audio
-from url2md.transcription.writers import render_markdown
-from url2md.urlutils import host_of
+from ingest2md.config import Settings, load_settings
+from ingest2md.media import bilibili as source
+from ingest2md.media.audio import _ffmpeg_bin
+from ingest2md.model import Document
+from ingest2md.extractors.video import localize_metadata, retain_media
+from ingest2md.transcription.service import transcribe_audio
+from ingest2md.transcription.writers import render_markdown
+from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
 _BILIBILI_HOSTS = {"www.bilibili.com", "bilibili.com", "m.bilibili.com", "b23.tv"}
@@ -45,7 +45,7 @@ class BilibiliExtractor:
         bvid, part = source.resolve_video(url)
         meta = source.fetch_meta(bvid, part)
         logger.info("视频: %s；开始下载、切段和转写（会消耗 API 额度）", meta["title"])
-        with tempfile.TemporaryDirectory(prefix="url2md-bili-") as temp:
+        with tempfile.TemporaryDirectory(prefix="ingest2md-bili-") as temp:
             work = Path(temp)
             audio_path = source.download_audio(bvid, temp, cookies_file, part)
             transcript = transcribe_audio(audio_path, work, settings)

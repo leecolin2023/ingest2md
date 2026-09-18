@@ -1,8 +1,8 @@
 """Chinese translation shared by every video source."""
 from typing import Protocol
 
-from url2md.config import Settings
-from url2md.transcription.opencode import OpencodeEngine
+from ingest2md.config import Settings
+from ingest2md.transcription.opencode import OpencodeEngine
 
 
 class Translator(Protocol):

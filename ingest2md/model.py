@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from url2md.transcription.model import TranscriptResult
+from ingest2md.transcription.model import TranscriptResult
 
 _UNSAFE_FILENAME_CHARS = re.compile(r'[/\\?%*:|"<>\x00-\x1f]')
 
@@ -97,6 +97,6 @@ def write_document(doc: Document, output_dir: Path, formats=("md",)) -> Path:
             encoding="utf-8",
         )
     if "srt" in formats and doc.transcript:
-        from url2md.transcription.writers import render_srt
+        from ingest2md.transcription.writers import render_srt
         (doc_dir / "transcript.srt").write_text(render_srt(doc.transcript), encoding="utf-8")
     return md_path

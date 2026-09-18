@@ -2,9 +2,9 @@
 import shutil
 from pathlib import Path
 
-from url2md.config import Settings
-from url2md.model import Document
-from url2md.transcription.translation import make_translator, translate_text
+from ingest2md.config import Settings
+from ingest2md.model import Document
+from ingest2md.transcription.translation import make_translator, translate_text
 
 
 def localize_metadata(doc: Document, description: str, settings: Settings) -> None:

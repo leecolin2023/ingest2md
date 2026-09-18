@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
-from url2md.extractors.base import SourceUnavailableError
-from url2md.urlutils import host_of
+from ingest2md.extractors.base import SourceUnavailableError
+from ingest2md.urlutils import host_of
 
 _DOUYIN_HOSTS = {
     "douyin.com", "www.douyin.com", "v.douyin.com", "iesdouyin.com", "www.iesdouyin.com"

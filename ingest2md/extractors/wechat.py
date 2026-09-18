@@ -17,8 +17,8 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from url2md.model import Document, sanitize_filename
-from url2md.urlutils import host_of, normalize_url
+from ingest2md.model import Document, sanitize_filename
+from ingest2md.urlutils import host_of, normalize_url
 
 logger = logging.getLogger(__name__)
 

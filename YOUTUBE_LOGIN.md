@@ -13,8 +13,8 @@ YouTube 的登录态、JavaScript challenge、播放请求校验是不同问题�
 优先使用站点独立 Cookie：
 
 ```yaml
-youtube_cookies_file: ~/.config/url2md/youtube-cookies.txt
-bilibili_cookies_file: ~/.config/url2md/bilibili-cookies.txt
+youtube_cookies_file: ~/.config/ingest2md/youtube-cookies.txt
+bilibili_cookies_file: ~/.config/ingest2md/bilibili-cookies.txt
 ```
 
 旧的 `cookies_file` 继续保留为兼容回退；站点专用配置优先。
@@ -22,7 +22,7 @@ bilibili_cookies_file: ~/.config/url2md/bilibili-cookies.txt
 Cookie 文件不得提交到 Git，不应通过聊天、邮件或公开渠道转发。Linux/WSL 可执行：
 
 ```bash
-chmod 600 ~/.config/url2md/youtube-cookies.txt
+chmod 600 ~/.config/ingest2md/youtube-cookies.txt
 ```
 
 ## 零额度检测
@@ -30,8 +30,8 @@ chmod 600 ~/.config/url2md/youtube-cookies.txt
 拿到 Cookie 后先执行：
 
 ```bash
-url2md "https://www.youtube.com/watch?v=VIDEO_ID" \
-  --youtube-cookies-file ~/.config/url2md/youtube-cookies.txt \
+ingest2md "https://www.youtube.com/watch?v=VIDEO_ID" \
+  --youtube-cookies-file ~/.config/ingest2md/youtube-cookies.txt \
   --check-access
 ```
 

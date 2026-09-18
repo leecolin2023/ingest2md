@@ -1,8 +1,8 @@
-# url2md — 把你看到和听到的内容变成 LLM 可读 Markdown
+# ingest2md — 把你看到和听到的内容变成 LLM 可读 Markdown
 
-[![CI](https://github.com/leecolin2023/url2md/actions/workflows/ci.yml/badge.svg)](https://github.com/leecolin2023/url2md/actions/workflows/ci.yml)
+[![CI](https://github.com/leecolin2023/ingest2md/actions/workflows/ci.yml/badge.svg)](https://github.com/leecolin2023/ingest2md/actions/workflows/ci.yml)
 
-`url2md` 是一个轻量的多来源内容采集工具。输入网页链接、App 分享文案或本地音视频，它尽可能提取正文、回答、图片信息或音视频转写，并整理成**人能直接阅读、后续能批量交给大模型处理的本地 Markdown**。
+`ingest2md` 是一个轻量的多来源内容采集工具。输入网页链接、App 分享文案或本地音视频，它尽可能提取正文、回答、图片信息或音视频转写，并整理成**人能直接阅读、后续能批量交给大模型处理的本地 Markdown**。
 
 设计原则：
 
@@ -10,9 +10,15 @@
 
 默认只生成 Markdown。只有图片需要本地化时才附带 `images/`；JSON、SRT、TXT、媒体副本和切片都必须显式请求。
 
-v0.5 的边界也很明确：**优先扩大低成本、高价值的信息入口；如果某个平台需要复杂登录态、私有签名、解密或专用基础设施才能稳定支持，则先识别、明确提示，但不强行接入。**
+v0.6 的边界也很明确：**优先扩大低成本、高价值的信息入口；如果某个平台需要复杂登录态、私有签名、解密或专用基础设施才能稳定支持，则先识别、明确提示，但不强行接入。**
 
-## v0.5 新增
+## v0.6 工程重命名
+
+- 项目、Python distribution、Python package、CLI 和文档统一从旧名称重命名为 `ingest2md`。
+- 不保留旧包名或旧 CLI 兼容层，避免后续迭代长期维护双命名。
+- 内容抓取与转写能力保持不变。
+
+## v0.6 新增
 
 1. **小宇宙 Podcast**：单集页面 → 节目简介 / Show Notes → 公开音频 → 原语言转写 → 中文翻译 → 一个 Markdown。
 2. **本地音视频**：支持常见音频、视频文件直接进入现有转写链路。
@@ -28,8 +34,8 @@ v0.5 的边界也很明确：**优先扩大低成本、高价值的信息入口�
 | 小红书 | ✅ 轻量 | 单篇笔记正文 + 可取得图片 | Markdown + `images/`（有图片时） |
 | Bilibili | ✅ | 单视频/分P → 原语言转写 → 中文 | 单个 Markdown |
 | YouTube | ✅ | 单视频 → 原语言转写 → 中文 | 单个 Markdown |
-| **小宇宙** | **✅ v0.5** | Show Notes + 播客转写 | 单个 Markdown |
-| **本地音视频** | **✅ v0.5** | 本地媒体 → 原语言转写 → 中文 | 单个 Markdown |
+| **小宇宙** | **✅ v0.6** | Show Notes + 播客转写 | 单个 Markdown |
+| **本地音视频** | **✅ v0.6** | 本地媒体 → 原语言转写 → 中文 | 单个 Markdown |
 | 普通网页 | ✅ | 主要正文 | 单个 Markdown |
 | 抖音 | ⏸ | 自动识别；媒体下载暂缓 | 明确提示改走本地文件 |
 | 微信视频号 | ⏸ | 自动识别；媒体下载暂缓 | 明确提示改走本地文件 |
@@ -63,7 +69,7 @@ python -m camoufox fetch
 
 ## 输入已经不是只有 URL
 
-v0.5 把输入统一为：
+v0.6 把输入统一为：
 
 ```text
 Content Reference
@@ -77,22 +83,22 @@ Content Reference
 
 ```bash
 # 普通 URL
-url2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e"
+ingest2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e"
 
 # 整段 App 分享文本：会提取第一条 http(s) URL
-url2md "6.48 复制打开抖音，看看某个作品 https://v.douyin.com/akR8LCIaTMI/ 其他分享口令"
+ingest2md "6.48 复制打开抖音，看看某个作品 https://v.douyin.com/akR8LCIaTMI/ 其他分享口令"
 
 # 本地音频
-url2md "./podcast.m4a"
+ingest2md "./podcast.m4a"
 
 # 本地视频
-url2md "D:\Downloads\douyin.mp4"
+ingest2md "D:\Downloads\douyin.mp4"
 
 # B站 BV 号
-url2md "BV1xx411c7mD"
+ingest2md "BV1xx411c7mD"
 
 # 快速测试前一分钟
-url2md "./video.mp4" --limit-seconds 60
+ingest2md "./video.mp4" --limit-seconds 60
 ```
 
 ### 本地媒体格式
@@ -107,30 +113,30 @@ url2md "./video.mp4" --limit-seconds 60
 
 ```bash
 # 微信
-url2md "https://mp.weixin.qq.com/s/xxxx" -o archive
+ingest2md "https://mp.weixin.qq.com/s/xxxx" -o archive
 
 # 知乎：默认按问题抓尽可能多回答
-url2md "https://www.zhihu.com/question/2083802170001044893" -o archive
+ingest2md "https://www.zhihu.com/question/2083802170001044893" -o archive
 
 # 只想快速抓前 10 个回答
-url2md "https://www.zhihu.com/question/2083802170001044893" --max-answers 10 -o archive
+ingest2md "https://www.zhihu.com/question/2083802170001044893" --max-answers 10 -o archive
 
 # 小红书
-url2md "https://www.xiaohongshu.com/explore/xxxx" -o archive
+ingest2md "https://www.xiaohongshu.com/explore/xxxx" -o archive
 
 # 普通网页
-url2md "https://example.com/article" -o archive
+ingest2md "https://example.com/article" -o archive
 
 # B站 / YouTube / 小宇宙 / 本地音视频（需要 OPENCODE_API_KEY）
-url2md "https://www.bilibili.com/video/BVxxxxxxxxxx" -o archive
-url2md "https://www.youtube.com/watch?v=xxxxxxxxxxx" -o archive
-url2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e" -o archive
-url2md "./meeting.mp3" -o archive
+ingest2md "https://www.bilibili.com/video/BVxxxxxxxxxx" -o archive
+ingest2md "https://www.youtube.com/watch?v=xxxxxxxxxxx" -o archive
+ingest2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e" -o archive
+ingest2md "./meeting.mp3" -o archive
 ```
 
 ## 抖音与微信视频号：识别，但暂不自动下载
 
-v0.5 会在 Generic Web 之前识别这些链接，例如：
+v0.6 会在 Generic Web 之前识别这些链接，例如：
 
 ```text
 v.douyin.com
@@ -145,7 +151,7 @@ channels.weixin.qq.com
 已识别来源：抖音视频
 当前版本暂未接入稳定的媒体获取方式。
 建议下载视频后执行：
-url2md "/path/to/douyin.mp4"
+ingest2md "/path/to/douyin.mp4"
 ```
 
 视频号同理。
@@ -263,10 +269,10 @@ formats: [md]
 需要时才指定：
 
 ```bash
-url2md "<video-or-podcast>" --formats md,srt
-url2md "<url>" --formats md,json
-url2md "<url>" --formats md,txt
-url2md "./video.mp4" --keep-audio --keep-chunks
+ingest2md "<video-or-podcast>" --formats md,srt
+ingest2md "<url>" --formats md,json
+ingest2md "<url>" --formats md,txt
+ingest2md "./video.mp4" --keep-audio --keep-chunks
 ```
 
 支持 `md,txt,srt,json`。`srt` 只在存在转写结果时输出。
@@ -285,7 +291,7 @@ url2md "./video.mp4" --keep-audio --keep-chunks
 
 普通网页先用 HTTP 直接获取并选择最像正文的 `article/main/content` 区域；如果正文过短或 HTTP 获取失败，再退回 Playwright 浏览器渲染。
 
-Generic Web 永远排在更具体的平台之后。v0.5 路由优先级大致为：
+Generic Web 永远排在更具体的平台之后。v0.6 路由优先级大致为：
 
 ```text
 已识别但暂缓的平台
@@ -319,9 +325,9 @@ YouTube 登录、Cookie、JS Runtime 与 403/PO Token 的详细诊断见 [`YOUTU
 Cookie 统一使用 Netscape 格式：
 
 ```bash
-url2md "<知乎URL>" --zhihu-cookies-file zhihu-cookies.txt
-url2md "<小红书URL>" --xiaohongshu-cookies-file xhs-cookies.txt
-url2md "<YouTubeURL>" --youtube-cookies-file youtube-cookies.txt
+ingest2md "<知乎URL>" --zhihu-cookies-file zhihu-cookies.txt
+ingest2md "<小红书URL>" --xiaohongshu-cookies-file xhs-cookies.txt
+ingest2md "<YouTubeURL>" --youtube-cookies-file youtube-cookies.txt
 ```
 
 ## 配置
@@ -347,7 +353,7 @@ CLI 显式参数 > OPENCODE_API_KEY 环境变量 > config.yaml > 默认值
 ## 代码结构
 
 ```text
-url2md/
+ingest2md/
 ├── cli.py
 ├── config.py
 ├── model.py
@@ -396,7 +402,7 @@ Markdown Writer
 
 ## 工程状态
 
-- Python `>=3.10`；依赖、构建方式和 `url2md` 命令入口统一维护在 `pyproject.toml`。
+- Python `>=3.10`；依赖、构建方式和 `ingest2md` 命令入口统一维护在 `pyproject.toml`。
 - 本地测试使用 `pytest`；当前回归测试见 `tests/`。
 - GitHub Actions 会在 push 到 `main` 和 Pull Request 时，使用 Python 3.10 / 3.12 执行安装、编译检查、测试和 CLI smoke test。
 - CI 不下载 Playwright 浏览器或真实媒体，也不调用转写 API；这些属于在线端到端能力，不放进基础工程 CI。
@@ -408,7 +414,7 @@ python -m pip install -e ".[test]"
 python -m pytest -q
 ```
 
-v0.5 当前随包新增 16 项回归/增量测试，覆盖：
+v0.6 当前随包新增 16 项回归/增量测试，覆盖：
 
 - 分享文案提取第一条 URL；
 - 普通 URL 与 BV 号兼容；

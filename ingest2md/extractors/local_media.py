@@ -7,11 +7,11 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from url2md.config import Settings, load_settings
-from url2md.media.audio import _ffmpeg_bin, probe_duration
-from url2md.model import Document
-from url2md.transcription.service import transcribe_audio
-from url2md.transcription.writers import render_markdown
+from ingest2md.config import Settings, load_settings
+from ingest2md.media.audio import _ffmpeg_bin, probe_duration
+from ingest2md.model import Document
+from ingest2md.transcription.service import transcribe_audio
+from ingest2md.transcription.writers import render_markdown
 
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg", ".opus"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v"}
@@ -46,7 +46,7 @@ class LocalMediaExtractor:
             raise ValueError(f"不是受支持的本地音视频文件: {path}")
 
         media_kind = "本地音频" if path.suffix.lower() in AUDIO_EXTENSIONS else "本地视频"
-        with tempfile.TemporaryDirectory(prefix="url2md-local-") as temp:
+        with tempfile.TemporaryDirectory(prefix="ingest2md-local-") as temp:
             work = Path(temp)
             transcript = transcribe_audio(str(path), work, settings)
             try:

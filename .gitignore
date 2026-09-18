@@ -24,7 +24,7 @@ config.yaml
 *cookies*.txt
 cookies.txt
 
-# url2md outputs and temporary media
+# ingest2md outputs and temporary media
 output/
 outputs/
 archive/

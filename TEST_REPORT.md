@@ -1,4 +1,4 @@
-# url2md v0.5 Test Report
+# ingest2md v0.6 Test Report
 
 测试日期：2026-09-17
 
@@ -35,7 +35,7 @@ PYTHONPATH=. pytest -q
 
 ## 关于“原来的 9 项测试”
 
-本次上传的 `url2md(1).zip` 只包含 `url2md/` Python 包，没有上一版 `tests/`、`pyproject.toml` 或 `TEST_REPORT.md`，所以无法直接逐文件重跑原测试集合。
+本次上传的 `ingest2md(1).zip` 只包含 `ingest2md/` Python 包，没有上一版 `tests/`、`pyproject.toml` 或 `TEST_REPORT.md`，所以无法直接逐文件重跑原测试集合。
 
 本轮采取的做法是：不重构原有微信、知乎、小红书、Bilibili、YouTube核心实现，同时把 v0.4 README 所描述的关键公共行为纳入新的回归测试。
 

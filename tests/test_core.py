@@ -5,18 +5,18 @@ from pathlib import Path
 
 import pytest
 
-from url2md.browser import load_netscape_cookies
-from url2md.config import Settings
-from url2md.extractors.base import SourceUnavailableError
-from url2md.extractors.deferred_media import DeferredMediaExtractor
-from url2md.extractors.local_media import LocalMediaExtractor
-from url2md.extractors.web import GenericWebExtractor, parse_web_page
-from url2md.extractors.xiaoyuzhou import XiaoyuzhouExtractor, parse_episode_page
-from url2md.model import Document, write_document
-from url2md.router import find_extractor
-from url2md.transcription.model import Segment, TranscriptResult
-from url2md.transcription.writers import render_markdown
-from url2md.urlutils import extract_first_url, normalize_reference, normalize_url
+from ingest2md.browser import load_netscape_cookies
+from ingest2md.config import Settings
+from ingest2md.extractors.base import SourceUnavailableError
+from ingest2md.extractors.deferred_media import DeferredMediaExtractor
+from ingest2md.extractors.local_media import LocalMediaExtractor
+from ingest2md.extractors.web import GenericWebExtractor, parse_web_page
+from ingest2md.extractors.xiaoyuzhou import XiaoyuzhouExtractor, parse_episode_page
+from ingest2md.model import Document, write_document
+from ingest2md.router import find_extractor
+from ingest2md.transcription.model import Segment, TranscriptResult
+from ingest2md.transcription.writers import render_markdown
+from ingest2md.urlutils import extract_first_url, normalize_reference, normalize_url
 
 
 SHARE_TEXT = """6.48 复制打开抖音，看看【星彩她爹讲三国（张睿）的作品】
@@ -117,7 +117,7 @@ def test_xiaoyuzhou_og_meta_fallback():
 
 
 def test_xiaoyuzhou_extractor_calls_shared_transcription(tmp_path: Path, monkeypatch):
-    import url2md.extractors.xiaoyuzhou as xyz
+    import ingest2md.extractors.xiaoyuzhou as xyz
 
     called = {"transcribe": False, "audio_url": ""}
     monkeypatch.setattr(xyz, "_ffmpeg_bin", lambda name: name)

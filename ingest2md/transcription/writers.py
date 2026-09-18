@@ -1,5 +1,5 @@
 """Render structured transcripts."""
-from url2md.transcription.model import TranscriptResult
+from ingest2md.transcription.model import TranscriptResult
 
 
 def srt_time(seconds: float) -> str:
