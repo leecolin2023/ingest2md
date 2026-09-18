@@ -5,7 +5,7 @@ from pathlib import Path
 
 import httpx
 
-from ingest2md.netutils import DEFAULTDEFAULT_USER_AGENT
+from ingest2md.netutils import DEFAULT_USER_AGENT
 
 
 def download_url(url: str, target: Path, *, max_bytes: int = 750 * 1024 * 1024) -> Path:
