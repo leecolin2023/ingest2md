@@ -1,4 +1,4 @@
-# ingest2md v0.8 Test Report
+# ingest2md v0.8.1 Test Report
 
 测试日期：2026-09-18
 
@@ -7,7 +7,7 @@
 GitHub Actions 在 Python 3.10 与 3.12 均通过：
 
 ```text
-29 passed
+30 passed
 ```
 
 执行链路：
@@ -19,48 +19,49 @@ python -m pytest -q
 ingest2md --help
 ```
 
-CI run：
+PR CI run：
 
 ```text
-35303957788
+35325059825
 ```
 
-## v0.8 新增覆盖
+## v0.8.1 YouTube 获取链路修复
 
-1. 默认 `asr_backend=sensevoice`，基础媒体路径不依赖付费 API；
-2. `sensevoice / openai / llm` 三个 ASR backend 能按配置路由；
-3. SenseVoice backend 自己选择 20 秒、16kHz 单声道 WAV 切片；
-4. OpenAI-compatible backend 自己选择 MP3 切片并调用 `/audio/transcriptions`；
-5. 字幕进入 `TranscriptResult` 后保持原语言，不再调用翻译器；
-6. YouTube / Bilibili 有字幕时继续跳过 ASR；
-7. YouTube 无字幕时进入所选 ASR backend，默认显示为 SenseVoice fallback；
-8. v0.7 的 `api_key/base_url/model/candidates/chunk_seconds` 配置可迁移到新的 LLM backend 字段；
-9. `translation_model` 与翻译执行链已从 v0.8 配置/运行时移除。
+1. 正常 YouTube ingestion 不再前置调用 `probe_video()`；
+2. `probe_video()` 只保留给 `--check-access` 的独立音频播放诊断；
+3. YouTube 首先直接探测人工/自动字幕；
+4. 有字幕时复用字幕探测阶段已经取得的 yt-dlp `info` 作为标题、频道、时长、简介等元数据，不额外发起 metadata/audio probe；
+5. 字幕探测与 YouTube 音频下载复用同一套 Cookie、重试、JS runtime 配置；
+6. 没有可用字幕或字幕探测失败时，才进入音频下载 → ASR fallback；
+7. 新增回归断言：字幕可用时调用 `probe_video`、下载音频或运行 ASR 均视为测试失败；
+8. 新增 metadata-from-info 回归，确保字幕路径可以完全复用现有 yt-dlp info。
 
-## 既有回归
+## v0.8 Local-first 回归
 
-v0.6 / v0.7 的核心行为继续覆盖：
+继续覆盖：
 
-- 分享文案第一条 URL 与 BV 号规范化；
-- 本地媒体路由；
-- 抖音 / 微信视频号在 Generic Web 前明确拦截；
-- 小宇宙公开页面、`__NEXT_DATA__`、`og:audio` fallback；
-- 默认 Markdown 与 JSON opt-in；
-- Generic Web → Trafilatura 优先；
-- PDF / Office → MarkItDown Adapter；
-- `--explain` dry-run；
-- YouTube / Bilibili subtitle-first；
-- VTT / SRT 解析；
-- Cookie 解析与时间段 Markdown。
+- 默认 `asr_backend=sensevoice`；
+- `sensevoice / openai / llm` 三种 ASR backend；
+- SenseVoice 自己处理 20 秒 WAV；
+- OpenAI-compatible backend 自己处理 MP3 与 `/audio/transcriptions`；
+- 字幕与 ASR 保持原语言，不强制翻译；
+- YouTube/Bilibili subtitle-first；
+- YouTube 无字幕时进入 ASR fallback；
+- Generic Web → Trafilatura；
+- PDF/Office → MarkItDown；
+- 小宇宙、本地媒体、分享文案、BV 号与 deferred media 路由；
+- Netscape Cookie 与 `--explain`。
 
-## CI 边界
+## 边界
 
-基础 CI **不安装 `ingest2md[local-asr]`，也不下载 SenseVoiceSmall 模型**。SenseVoice、OpenAI ASR 与 LLM audio 的 backend 行为通过 mock / fixture 验证，以保持基础 CI 轻量、稳定且不调用外部付费 API。
+这次修复的是 **ingest2md 自己的请求顺序与重复请求问题**，不绕过 YouTube 外部的 Cookie、网络出口、bot challenge、PO Token 或播放权限校验。
 
-真实本地 ASR 使用时需要：
+如果同一环境下裸 yt-dlp 仍返回：
 
-```bash
-python -m pip install -e ".[local-asr]"
+```text
+Sign in to confirm you're not a bot
 ```
 
-并确保系统存在 `ffmpeg` 与 `ffprobe`。首次使用可自动下载 `iic/SenseVoiceSmall`，也可通过 `sensevoice_model_dir` 指向已有模型目录。
+则说明 YouTube 访问层仍拒绝当前 session / Cookie / 网络出口组合；v0.8.1 不会伪装成应用层已经解决该问题。
+
+基础 CI 仍不下载真实 YouTube 音频，也不下载 SenseVoice 模型或调用外部付费 API。
