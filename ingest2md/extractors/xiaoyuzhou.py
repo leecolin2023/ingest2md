@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 from ingest2md.config import Settings, load_settings
 from ingest2md.extractors.video import retain_media
 from ingest2md.htmlutils import clean_fragment, meta_content, text_of_html
-from ingest2md.netutils import DEFAULTDEFAULT_USER_AGENT
+from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.media.download import download_url
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
