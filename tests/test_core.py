@@ -120,7 +120,6 @@ def test_xiaoyuzhou_extractor_calls_shared_transcription(tmp_path: Path, monkeyp
     import ingest2md.extractors.xiaoyuzhou as xyz
 
     called = {"transcribe": False, "audio_url": ""}
-    monkeypatch.setattr(xyz, "_ffmpeg_bin", lambda name: name)
     monkeypatch.setattr(xyz, "fetch_episode_page", lambda url: NEXT_DATA_HTML)
 
     def fake_download(url, target, **kwargs):
@@ -131,14 +130,14 @@ def test_xiaoyuzhou_extractor_calls_shared_transcription(tmp_path: Path, monkeyp
     def fake_transcribe(audio_path, work, settings):
         called["transcribe"] = True
         return TranscriptResult(
-            [Segment(0, 60, "中文转写", "original")],
-            ["mock-asr"], 60, translation_models=["mock-translation"],
+            [Segment(0, 60, "中文转写")],
+            ["mock-asr"], 60,
         )
 
     monkeypatch.setattr(xyz, "download_url", fake_download)
     monkeypatch.setattr(xyz, "transcribe_audio", fake_transcribe)
 
-    settings = Settings(api_key="test", output_dir=str(tmp_path))
+    settings = Settings(output_dir=str(tmp_path))
     doc = asyncio.run(XiaoyuzhouExtractor(settings).extract(
         "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e", tmp_path
     ))
@@ -238,18 +237,12 @@ world
     cues = parse_vtt_or_srt(vtt)
     assert [cue.text for cue in cues] == ["Hello", "world"]
 
-    class FakeTranslator:
-        used_models = ["fake-translate"]
-        def translate(self, text):
-            return "中:" + text
-
     track = SubtitleTrack(language="en", kind="manual", cues=cues)
-    result = subtitles_to_transcript(
-        track, Settings(api_key="test", chunk_seconds=300), translator=FakeTranslator()
-    )
+    result = subtitles_to_transcript(track, Settings(subtitle_window_seconds=300))
     assert result.models == ["manual-subtitle:en"]
     assert result.timestamp_precision == "subtitle-window"
-    assert result.segments[0].text == "中:Hello world"
+    assert result.language == "en"
+    assert result.segments[0].text == "Hello world"
 
 
 def test_youtube_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
@@ -262,15 +255,15 @@ def test_youtube_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
         "duration": 10, "desc": "", "url": url, "audio_formats": 1,
     })
     monkeypatch.setattr(yt, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: track)
-    transcript = TranscriptResult([Segment(0, 10, "你好", "hello")], ["manual-subtitle:en"], 10,
+    transcript = TranscriptResult([Segment(0, 10, "你好")], ["manual-subtitle:en"], 10,
                                   timestamp_precision="subtitle-window")
     monkeypatch.setattr(yt, "subtitles_to_transcript", lambda *args, **kwargs: transcript)
     monkeypatch.setattr(yt, "transcribe_audio", lambda *args, **kwargs: (_ for _ in ()).throw(
         AssertionError("ASR should not run when subtitles exist")
     ))
-    monkeypatch.setattr(yt, "localize_metadata", lambda doc, desc, settings: None)
+    monkeypatch.setattr(yt, "attach_video_description", lambda doc, desc: None)
 
-    settings = Settings(api_key="test", output_dir=str(tmp_path))
+    settings = Settings(output_dir=str(tmp_path))
     doc = asyncio.run(yt.YouTubeExtractor(settings).extract(
         "https://www.youtube.com/watch?v=dQw4w9WgXcQ", tmp_path
     ))
@@ -286,28 +279,27 @@ def test_youtube_without_subtitle_falls_back_to_asr(tmp_path: Path, monkeypatch)
         "duration": 10, "desc": "", "url": url, "audio_formats": 1,
     })
     monkeypatch.setattr(yt, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: None)
-    monkeypatch.setattr(yt, "_ffmpeg_bin", lambda name: name)
     audio = tmp_path / "audio.m4a"
     audio.write_bytes(b"fake")
     monkeypatch.setattr(yt.source, "download_video", lambda *args, **kwargs: ({
         "id": "dQw4w9WgXcQ", "title": "Demo", "uploader": "Channel",
         "duration": 10, "desc": "", "url": args[0],
     }, str(audio)))
-    transcript = TranscriptResult([Segment(0, 10, "你好", "hello")], ["mock-asr"], 10)
+    transcript = TranscriptResult([Segment(0, 10, "你好")], ["mock-asr"], 10)
     called = {"asr": False}
     def fake_asr(*args, **kwargs):
         called["asr"] = True
         return transcript
     monkeypatch.setattr(yt, "transcribe_audio", fake_asr)
-    monkeypatch.setattr(yt, "localize_metadata", lambda doc, desc, settings: None)
+    monkeypatch.setattr(yt, "attach_video_description", lambda doc, desc: None)
     monkeypatch.setattr(yt, "retain_media", lambda *args, **kwargs: None)
 
-    settings = Settings(api_key="test", output_dir=str(tmp_path))
+    settings = Settings(output_dir=str(tmp_path))
     doc = asyncio.run(yt.YouTubeExtractor(settings).extract(
         "https://www.youtube.com/watch?v=dQw4w9WgXcQ", tmp_path
     ))
     assert called["asr"] is True
-    assert dict(doc.metadata)["内容获取"] == "音频下载 + ASR fallback"
+    assert dict(doc.metadata)["内容获取"] == "音频下载 + sensevoice ASR fallback"
 
 
 def test_bilibili_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
@@ -321,15 +313,15 @@ def test_bilibili_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
     })
     track = SubtitleTrack("zh-Hans", "manual", [SubtitleCue(0, 10, "你好")])
     monkeypatch.setattr(bili, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: track)
-    transcript = TranscriptResult([Segment(0, 10, "你好", "你好")], ["manual-subtitle:zh-Hans"], 10,
+    transcript = TranscriptResult([Segment(0, 10, "你好")], ["manual-subtitle:zh-Hans"], 10,
                                   timestamp_precision="subtitle-window")
     monkeypatch.setattr(bili, "subtitles_to_transcript", lambda *args, **kwargs: transcript)
     monkeypatch.setattr(bili, "transcribe_audio", lambda *args, **kwargs: (_ for _ in ()).throw(
         AssertionError("ASR should not run when subtitles exist")
     ))
-    monkeypatch.setattr(bili, "localize_metadata", lambda doc, desc, settings: None)
+    monkeypatch.setattr(bili, "attach_video_description", lambda doc, desc: None)
 
-    settings = Settings(api_key="test", output_dir=str(tmp_path))
+    settings = Settings(output_dir=str(tmp_path))
     doc = asyncio.run(bili.BilibiliExtractor(settings).extract(
         "https://www.bilibili.com/video/BV1xx411c7mD", tmp_path
     ))
@@ -355,3 +347,102 @@ def test_document_adapter_delegates_to_markitdown(tmp_path: Path, monkeypatch):
     assert doc.title == "Converted"
     assert doc.body_md.startswith("# Body")
     assert dict(doc.metadata)["转换后端"] == "Microsoft MarkItDown"
+
+
+def test_default_asr_backend_is_local_sensevoice():
+    settings = Settings()
+    assert settings.asr_backend == "sensevoice"
+    assert settings.openai_asr_api_key == ""
+    assert settings.llm_api_key == ""
+
+
+def test_asr_factory_routes_three_backends():
+    from ingest2md.transcription.service import create_asr_backend
+
+    assert type(create_asr_backend(Settings(asr_backend="sensevoice"))).__name__ == "SenseVoiceBackend"
+    assert type(create_asr_backend(Settings(asr_backend="openai"))).__name__ == "OpenAIASRBackend"
+    assert type(create_asr_backend(Settings(asr_backend="llm"))).__name__ == "LLMAudioBackend"
+
+
+def test_sensevoice_backend_owns_wav_chunking(tmp_path: Path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import ingest2md.transcription.sensevoice as sv
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    called = {"chunks": False, "model": False}
+
+    def fake_chunks(audio, seconds, limit, out_dir):
+        called["chunks"] = True
+        assert seconds == 20
+        chunk = tmp_path / "chunk.wav"
+        chunk.write_bytes(b"fake")
+        return [{"path": str(chunk), "start": 0.0, "end": 20.0}]
+
+    class FakeModel:
+        def __init__(self, path, batch_size=1, quantize=True):
+            called["model"] = True
+        def __call__(self, paths, language="auto", use_itn=True):
+            return ["<|zh|>本地转写"]
+
+    monkeypatch.setattr(sv, "chunk_audio_wav", fake_chunks)
+    monkeypatch.setitem(sys.modules, "funasr_onnx", SimpleNamespace(SenseVoiceSmall=FakeModel))
+    monkeypatch.setitem(
+        sys.modules, "funasr_onnx.utils.postprocess_utils",
+        SimpleNamespace(rich_transcription_postprocess=lambda text: text.replace("<|zh|>", "")),
+    )
+
+    result = sv.SenseVoiceBackend().transcribe(
+        str(tmp_path / "audio.mp3"), tmp_path,
+        Settings(sensevoice_model_dir=str(model_dir)),
+    )
+    assert called == {"chunks": True, "model": True}
+    assert result.segments[0].text == "本地转写"
+    assert result.models == ["sensevoice-onnx:SenseVoiceSmall"]
+
+
+def test_openai_asr_backend_owns_mp3_chunking(tmp_path: Path, monkeypatch):
+    import ingest2md.transcription.openai_asr as cloud
+
+    chunk = tmp_path / "chunk.mp3"
+    chunk.write_bytes(b"fake")
+    monkeypatch.setattr(cloud, "chunk_audio_mp3", lambda *args, **kwargs: [
+        {"path": str(chunk), "start": 0.0, "end": 10.0}
+    ])
+
+    class Response:
+        status_code = 200
+        text = ""
+        def json(self):
+            return {"text": "cloud transcript"}
+
+    monkeypatch.setattr(cloud.requests, "post", lambda *args, **kwargs: Response())
+    settings = Settings(
+        asr_backend="openai",
+        openai_asr_api_key="test",
+        openai_asr_model="demo-asr",
+    )
+    result = cloud.OpenAIASRBackend().transcribe("audio.mp3", tmp_path, settings)
+    assert result.segments[0].text == "cloud transcript"
+    assert result.models == ["demo-asr"]
+
+
+def test_legacy_cloud_config_maps_to_llm_without_translation(tmp_path: Path):
+    from ingest2md.config import load_settings
+
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "api_key: old-key\n"
+        "base_url: https://example.com/v1\n"
+        "model: old-model\n"
+        "translation_model: old-translate\n"
+        "chunk_seconds: 123\n",
+        encoding="utf-8",
+    )
+    settings = load_settings(str(config))
+    assert settings.llm_api_key == "old-key"
+    assert settings.llm_base_url == "https://example.com/v1"
+    assert settings.llm_model == "old-model"
+    assert settings.llm_chunk_seconds == 123
+    assert not hasattr(settings, "translation_model")

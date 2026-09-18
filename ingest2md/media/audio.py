@@ -1,12 +1,11 @@
-"""音频切分：用 ffmpeg 把音频切成适合 API 单次请求的段落。"""
-
+"""Shared ffmpeg helpers; each ASR backend chooses its own chunk format and size."""
 import os
 import subprocess
 from pathlib import Path
 
 
 def _ffmpeg_bin(name: str) -> str:
-    """优先用 PATH 中的 ffmpeg；否则回退到 winget 安装位置。"""
+    """Prefer PATH; fall back to the common Windows winget FFmpeg location."""
     from shutil import which
 
     path = which(name)
@@ -28,44 +27,72 @@ def probe_duration(audio_path: str) -> float:
     return float(out.stdout.strip())
 
 
-def chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int = 0,
-                out_dir: str = None) -> list:
-    """把音频转码为 16kHz 单声道 mp3 并切段。
-
-    返回 [{path, start, end}]，start/end 为相对原音频的秒数。
-    """
+def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
+                 out_dir: str | Path, *, extension: str, codec_args: list[str]) -> list[dict]:
     if chunk_seconds <= 0 or limit_seconds < 0:
         raise ValueError("切段时长必须大于零，处理时长不能为负数")
     src = Path(audio_path)
-    out_dir = Path(out_dir) if out_dir else src.parent / "chunks"
+    out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    total = probe_duration(audio_path)
+    total = probe_duration(str(src))
     if limit_seconds and limit_seconds < total:
         total = limit_seconds
 
-    chunks = []
-    idx = 0
+    chunks: list[dict] = []
+    index = 0
     start = 0.0
     while start < total - 0.5:
         end = min(start + chunk_seconds, total)
-        seg = out_dir / f"chunk_{idx:03d}.mp3"
+        target = out_dir / f"chunk_{index:04d}.{extension}"
         cmd = [
             _ffmpeg_bin("ffmpeg"), "-y", "-v", "error",
-            "-ss", str(start), "-to", str(end), "-i", str(src),
-            "-vn", "-acodec", "libmp3lame", "-ar", "16000", "-ac", "1", "-b:a", "64k",
-            str(seg),
+            "-ss", str(start), "-to", str(end), "-i", str(src), "-vn",
+            *codec_args, str(target),
         ]
         subprocess.run(cmd, check=True, capture_output=True)
-        chunks.append({"path": str(seg), "start": round(start, 2), "end": round(end, 2)})
-        idx += 1
+        chunks.append({
+            "path": str(target),
+            "start": round(start, 3),
+            "end": round(end, 3),
+        })
+        index += 1
         start = end
     return chunks
 
 
-def cleanup_chunks(chunks: list):
-    for c in chunks:
+def chunk_audio_mp3(audio_path: str, chunk_seconds: int, limit_seconds: int,
+                    out_dir: str | Path) -> list[dict]:
+    """64kbps 16kHz mono MP3 for cloud / multimodal LLM upload."""
+    return _chunk_audio(
+        audio_path, chunk_seconds, limit_seconds, out_dir,
+        extension="mp3",
+        codec_args=["-acodec", "libmp3lame", "-ar", "16000", "-ac", "1", "-b:a", "64k"],
+    )
+
+
+def chunk_audio_wav(audio_path: str, chunk_seconds: int, limit_seconds: int,
+                    out_dir: str | Path) -> list[dict]:
+    """16kHz mono PCM WAV for SenseVoice ONNX."""
+    return _chunk_audio(
+        audio_path, chunk_seconds, limit_seconds, out_dir,
+        extension="wav",
+        codec_args=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"],
+    )
+
+
+# Backward-compatible helper for callers from v0.7; new backends call the
+# explicit format-specific helpers above.
+def chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int = 0,
+                out_dir: str | None = None) -> list[dict]:
+    src = Path(audio_path)
+    target = Path(out_dir) if out_dir else src.parent / "chunks"
+    return chunk_audio_mp3(audio_path, chunk_seconds, limit_seconds, target)
+
+
+def cleanup_chunks(chunks: list[dict]) -> None:
+    for chunk in chunks:
         try:
-            os.remove(c["path"])
+            os.remove(chunk["path"])
         except OSError:
             pass

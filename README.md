@@ -10,7 +10,16 @@
 
 默认只生成 Markdown。只有图片需要本地化时才附带 `images/`；JSON、SRT、TXT、媒体副本和切片都必须显式请求。
 
-v0.7 的边界继续保持明确：**优先扩大低成本、高价值的信息入口；如果某个平台需要复杂登录态、私有签名、解密或专用基础设施才能稳定支持，则先识别、明确提示，但不强行接入。**
+v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
+
+## v0.8：Local-first transcription
+
+1. **默认本地 ASR**：没有平台字幕时，默认使用 `SenseVoiceBackend`（SenseVoiceSmall ONNX）在本地 CPU 转写。
+2. **Backend 自己决定音频预处理**：SenseVoice 使用约 20 秒、16kHz 单声道 PCM WAV；OpenAI-compatible ASR 使用较长 MP3；LLM audio 保留原来的多模态音频切片方式。
+3. **删除强制中文翻译**：字幕和 ASR 结果按原语言直接进入 `TranscriptResult → Markdown`。YouTube/B站存在字幕时可以做到 0 ASR、0 LLM、0 API 成本。
+4. **保留两种高级云端入口**：`openai` 调用 OpenAI-compatible `/audio/transcriptions`；`llm` 调用兼容 `chat/responses + input_audio` 的多模态模型。Opencode 只是 `llm` backend 的默认示例配置，不再是项目必需依赖。
+
+> **字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
 ## v0.7：把现有能力变聪明
 
@@ -39,10 +48,10 @@ v0.7 的边界继续保持明确：**优先扩大低成本、高价值的信息�
 | 微信公众号 | ✅ | 单篇文章 | Markdown + `images/` |
 | 知乎 | ✅ | **一个问题 + 尽可能多的回答** | 单个 Markdown |
 | 小红书 | ✅ 轻量 | 单篇笔记正文 + 可取得图片 | Markdown + `images/`（有图片时） |
-| Bilibili | ✅ | 单视频/分P → 字幕优先 → ASR fallback → 中文 | 单个 Markdown |
-| YouTube | ✅ | 单视频 → 字幕优先 → ASR fallback → 中文 | 单个 Markdown |
+| Bilibili | ✅ | 单视频/分P → 字幕优先 → 本地 ASR fallback → 原语言 | 单个 Markdown |
+| YouTube | ✅ | 单视频 → 字幕优先 → 本地 ASR fallback → 原语言 | 单个 Markdown |
 | **小宇宙** | **✅ v0.6** | Show Notes + 播客转写 | 单个 Markdown |
-| **本地音视频** | **✅ v0.6** | 本地媒体 → 原语言转写 → 中文 | 单个 Markdown |
+| **本地音视频** | **✅ v0.8 Local-first** | 本地媒体 → 默认 SenseVoice 本地转写 → 原语言 | 单个 Markdown |
 | 普通网页 | ✅ | 主要正文 | 单个 Markdown |
 | 抖音 | ⏸ | 自动识别；媒体下载暂缓 | 明确提示改走本地文件 |
 | 微信视频号 | ⏸ | 自动识别；媒体下载暂缓 | 明确提示改走本地文件 |
@@ -72,7 +81,15 @@ python -m playwright install chromium
 python -m camoufox fetch
 ```
 
-音视频在需要 ASR fallback 时使用 `ffmpeg` 与 `ffprobe`。YouTube 建议安装当前版 Deno 或 Node.js；遇到登录/机器人校验时提供 Cookie。
+基础安装仍保持轻量。需要本地音视频转写时安装：
+
+```bash
+python -m pip install -e ".[local-asr]"
+```
+
+`local-asr` 会安装 `funasr-onnx + onnxruntime + modelscope + funasr`。第一次真正使用 SenseVoice 时会自动下载/定位 `iic/SenseVoiceSmall`；如目录中尚无 ONNX，`funasr-onnx` 可借助 FunASR 完成首次导出。也可以通过 `sensevoice_model_dir` 指向已经准备好的本地 ONNX 模型目录。音视频 ASR 仍需要系统可用的 `ffmpeg` / `ffprobe`。
+
+YouTube 建议安装当前版 Deno 或 Node.js；遇到登录/机器人校验时提供 Cookie。
 
 文档能力按需安装，不进入默认依赖：
 
@@ -82,7 +99,7 @@ python -m pip install -e ".[documents]"
 
 ## 输入已经不是只有 URL
 
-v0.7 把输入统一为：
+当前把输入统一为：
 
 ```text
 Content Reference
@@ -144,7 +161,8 @@ ingest2md "https://www.xiaohongshu.com/explore/xxxx" -o archive
 # 普通网页
 ingest2md "https://example.com/article" -o archive
 
-# B站 / YouTube / 小宇宙 / 本地音视频（需要 OPENCODE_API_KEY）
+# B站 / YouTube：有字幕直接使用；无字幕默认本地 SenseVoice
+# 小宇宙 / 本地音视频：默认本地 SenseVoice
 ingest2md "https://www.bilibili.com/video/BVxxxxxxxxxx" -o archive
 ingest2md "https://www.youtube.com/watch?v=xxxxxxxxxxx" -o archive
 ingest2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e" -o archive
@@ -192,7 +210,7 @@ HTTP 流式下载到临时目录
  ↓
 复用现有 transcribe_audio()
  ↓
-Show Notes + 中文转写 → 一个 Markdown
+Show Notes + 原语言转写 → 一个 Markdown
 ```
 
 最终 Markdown 形态：
@@ -231,25 +249,24 @@ Show Notes + 中文转写 → 一个 Markdown
 
 ## 本地音视频处理方式
 
-本地音频和视频不新建转写框架，直接复用现有链路：
+v0.8 不再让一个统一的 300 秒切片规则绑住所有 ASR。流程变成：
 
 ```text
-本地文件
+本地文件 / 已下载媒体
  ↓
-ffmpeg / ffprobe
+ASR backend
+ ├─ sensevoice（默认）→ 约20秒 16k mono PCM WAV → SenseVoiceSmall ONNX
+ ├─ openai           → 较长 MP3 → /audio/transcriptions
+ └─ llm              → MP3 → chat/responses + input_audio
  ↓
-切片
- ↓
-原语言转写
- ↓
-简体中文翻译
+原语言 TranscriptResult
  ↓
 Markdown
 ```
 
-视频文件会由 ffmpeg 在切片时忽略画面，只处理音轨。
+视频文件仍由 ffmpeg 忽略画面，只处理音轨。不同 backend 自己决定切片大小和编码格式。
 
-`--keep-audio` 对网络视频/播客仍保留下载音频；对本地媒体则保留一份 `source_media.<ext>` 副本。`--keep-chunks` 会保留 MP3 切片。
+`--keep-audio` 对网络视频/播客保留下载音频；对本地媒体保存一份 `source_media.<ext>` 副本。`--keep-chunks` 保留 backend 实际使用的切片，因此 SenseVoice 通常是 WAV，云端 backend 通常是 MP3。
 
 ## `--explain`：只解释路由，不执行
 
@@ -316,7 +333,7 @@ ingest2md "./video.mp4" --keep-audio --keep-chunks
 
 普通网页先用 HTTP 获取，再由 **Trafilatura** 提取主正文；如果结果为空则使用现有轻量 HTML 解析兜底。如果正文仍明显不足或 HTTP 获取失败，才退回 Playwright 浏览器渲染后再次抽取。`ingest2md` 不自行建设更重的 crawler/browser 基础设施。
 
-Generic Web 永远排在更具体的平台之后。v0.6 路由优先级大致为：
+Generic Web 永远排在更具体的平台之后。当前路由优先级大致为：
 
 ```text
 已识别但暂缓的平台
@@ -327,13 +344,29 @@ Generic Web 永远排在更具体的平台之后。v0.6 路由优先级大致为
 
 ## 视频 / 播客转写
 
-B站和 YouTube 在 v0.7 先走字幕优先；小宇宙和本地媒体仍进入核心转写服务：
+v0.8 的统一逻辑：
 
 ```text
-YouTube/B站 → 人工字幕 → 自动字幕 →（都没有）音频 + ASR
+YouTube / Bilibili
+  ↓
+人工字幕
+  ↓没有
+自动字幕
+  ↓没有
+下载音频
+  ↓
+配置 ASR backend（默认 SenseVoice 本地）
+  ↓
+原语言 Markdown
 
-小宇宙/本地媒体 → ffmpeg 切段 → 原语言转写 → 中文翻译 → Markdown
+小宇宙 / 本地音视频
+  ↓
+配置 ASR backend（默认 SenseVoice 本地）
+  ↓
+原语言 Markdown
 ```
+
+字幕路径不再需要 API Key；ASR 也不再自动进入翻译阶段。云端 backend 只有用户明确配置时才使用。
 
 Markdown 默认按切段时间组织：
 
@@ -362,7 +395,7 @@ ingest2md "<YouTubeURL>" --youtube-cookies-file youtube-cookies.txt
 复制 `config.example.yaml` 为 `config.yaml`。优先级：
 
 ```text
-CLI 显式参数 > OPENCODE_API_KEY 环境变量 > config.yaml > 默认值
+CLI 显式参数 > 对应环境变量 > config.yaml > 默认值
 ```
 
 核心参数：
@@ -372,7 +405,9 @@ CLI 显式参数 > OPENCODE_API_KEY 环境变量 > config.yaml > 默认值
 | `-o / --output` | `./output` |
 | `--formats` | `md` |
 | `--max-answers` | `0`，知乎尽可能多 |
-| `--chunk-seconds` | `300` |
+| `--asr-backend` | `sensevoice` |
+| `--asr-language` | `auto` |
+| `--sensevoice-chunk-seconds` | `20`（允许 5–30） |
 | `--limit-seconds` | `0`，完整媒体 |
 | `--keep-audio` | `false` |
 | `--keep-chunks` | `false` |
@@ -406,7 +441,12 @@ ingest2md/
 │   ├── youtube.py
 │   └── download.py            # NEW: 通用 HTTP 流式下载
 └── transcription/
-    └── ...                     # 不重构
+    ├── service.py              # 只负责选择 backend
+    ├── sensevoice.py           # 默认本地 SenseVoice ONNX
+    ├── openai_asr.py           # /audio/transcriptions
+    ├── llm_audio.py            # chat/responses + input_audio
+    ├── subtitles.py
+    └── writers.py
 ```
 
 核心仍然保持简单：
@@ -441,7 +481,7 @@ python -m pip install -e ".[test]"
 python -m pytest -q
 ```
 
-v0.7 当前共 24 项回归/增量测试，覆盖：
+v0.8 当前在原有覆盖上新增 Local-first ASR 回归，重点覆盖：
 
 - 分享文案提取第一条 URL；
 - 普通 URL 与 BV 号兼容；
@@ -456,6 +496,12 @@ v0.7 当前共 24 项回归/增量测试，覆盖：
 - `--explain` dry-run 路由说明；
 - YouTube/B站字幕优先且字幕存在时跳过 ASR；
 - YouTube 无字幕时 ASR fallback；
+- 默认 ASR backend 为 SenseVoice；
+- `sensevoice / openai / llm` 三种 backend 路由；
+- SenseVoice backend 自己生成 20 秒 WAV 切片；
+- OpenAI-compatible backend 自己生成 MP3 切片并调用 `/audio/transcriptions`；
+- 字幕路径保持原语言，不再调用 Translator；
+- v0.7 旧配置自动映射到新的 LLM backend 字段；
 - 视频时间段标题；
 - Netscape Cookie 解析。
 
@@ -471,4 +517,6 @@ v0.7 当前共 24 项回归/增量测试，覆盖：
 - 本地媒体必须是实际存在的文件；不存在的“路径字符串”不会进入本地媒体通道。
 - 普通网页以 Trafilatura 为主，但复杂交互网站仍可能需要浏览器 fallback，且不承诺等同专业 crawler。
 - PDF/DOCX/PPTX/XLSX 由 MarkItDown 提供实际转换能力，需要安装 `ingest2md[documents]`；ingest2md 本身不实现文档解析。
-- 音视频转写和翻译仍可能有模型误差；需要精确字幕时显式输出 SRT/JSON 并复核。
+- SenseVoiceSmall 本地 backend 当前面向普通话、粤语、英语、日语、韩语；其他语言可显式选择更合适的云端 backend。
+- 本地 ASR 首次使用需要下载模型；离线环境可预先准备模型并设置 `sensevoice_model_dir`。
+- 音视频 ASR 仍可能有识别误差；需要精确字幕时显式输出 SRT/JSON 并复核。

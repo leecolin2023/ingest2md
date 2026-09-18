@@ -45,11 +45,20 @@ ingest2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
 - 微信：文章正文 + 本地图片。
 - 知乎：问题 + 尽可能多回答，合并成一个 Markdown；不是只保存当前回答。
 - 小红书：正文 + 当前可取得的笔记图片；默认不跑 OCR/Vision。
-- B站/YouTube：优先使用平台人工/自动字幕；没有字幕时才下载音频进入 ASR，再统一翻译为简体中文。
-- 小宇宙：节目简介 / Show Notes + 公开音频转写；转写正文为简体中文。
-- 本地音视频：直接复用媒体切片 → 原语言转写 → 中文翻译链路。
+- B站/YouTube：优先使用平台人工/自动字幕；有字幕直接保留原语言，没有字幕才进入 ASR。
+- 小宇宙：节目简介 / Show Notes + 公开音频转写；默认使用本地 SenseVoice，保留原语言。
+- 本地音视频：默认 `SenseVoiceBackend` 本地转写；也可显式选择 OpenAI-compatible ASR 或多模态 LLM audio。Backend 自己决定切片格式与时长。
 - 普通网页：HTTP 获取后优先用 Trafilatura 提取正文，必要时才用浏览器 fallback。
 - PDF/DOCX/PPTX/XLSX：交给可选的 Microsoft MarkItDown Adapter，不自行实现文档解析。
+
+## v0.8 音视频规则
+
+- 默认 `asr_backend=sensevoice`，不要求任何付费 API。
+- SenseVoice 依赖按需安装：`pip install -e ".[local-asr]"`。
+- 字幕与 ASR 结果保持原语言，不做自动中文翻译。
+- `openai` backend 仅负责 OpenAI-compatible `/audio/transcriptions`。
+- `llm` backend 负责兼容 `chat/responses + input_audio` 的多模态模型；Opencode 只是默认示例配置。
+- 不建立 Provider Manager / Registry；`transcribe_audio()` 只选 backend，各 backend 自己做预处理与切片。
 
 ## Content Reference 规则
 
@@ -157,7 +166,7 @@ ingest2md "<Content Reference>" --explain
 
 - 输入尽量用引号完整包裹，特别是分享文案和 Windows 路径。
 - 知乎默认“尽可能多”，但不承诺绝对抓全；如果用户只想快速验证，可加 `--max-answers 10`。
-- 小宇宙与本地媒体都复用已有转写服务，不新增 MediaProviderManager / Resolver Registry。
+- 小宇宙与本地媒体都复用 `transcribe_audio()`；ASR backend 自己负责切片，不新增 MediaProviderManager / Resolver Registry。
 - 不把采集阶段变成总结阶段：默认尽量保留正文，后续分析交给 LLM。
 - 对不稳定网站，优先返回可读的部分结果/清晰错误，不建设重型审计产物。
 - 已识别但未稳定支持的平台必须明确失败，不得悄悄降级成 Generic Web。

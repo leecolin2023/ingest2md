@@ -1,14 +1,36 @@
-# ingest2md v0.6 example configuration
-api_key: ""
-base_url: "https://opencode.ai/zen/go/v1"
-model: "mimo-v2.5"
-translation_model: ""
-candidates: []
+# ingest2md v0.8 example configuration
+
+# Local-first transcription. No paid API is required for the default path.
+asr_backend: "sensevoice"       # sensevoice | openai | llm
+asr_language: "auto"
+limit_seconds: 0
+subtitle_window_seconds: 300
+
+# SenseVoice ONNX. Leave model_dir empty to download iic/SenseVoiceSmall on first use.
+sensevoice_model_dir: ""
+sensevoice_chunk_seconds: 20
+sensevoice_batch_size: 1
+sensevoice_quantize: true
+
+# Optional OpenAI-compatible /audio/transcriptions backend.
+openai_asr_base_url: "https://api.openai.com/v1"
+openai_asr_api_key: ""
+openai_asr_model: "gpt-4o-transcribe"
+openai_asr_chunk_seconds: 1200
+openai_asr_timeout: 600
+asr_prompt: ""
+
+# Optional multimodal LLM audio backend.
+# Opencode is only the default example; replace base_url/model/key for another compatible provider.
+llm_base_url: "https://opencode.ai/zen/go/v1"
+llm_api_key: ""
+llm_model: "mimo-v2.5"
+llm_api: "chat"                # chat | responses
+llm_chunk_seconds: 300
+llm_candidates: []
 
 output_dir: "output"
 formats: ["md"]
-chunk_seconds: 300
-limit_seconds: 0
 max_answers: 0
 keep_audio: false
 keep_chunks: false

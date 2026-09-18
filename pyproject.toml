@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ingest2md"
-version = "0.7.0"
-description = "Turn web links, sharing text and local media into lightweight LLM-readable Markdown."
+version = "0.8.0"
+description = "Source-aware content ingestion for AI/agents: turn web, media and documents into portable Markdown."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8"]
 documents = ["markitdown[pdf,docx,pptx,xlsx]"]
+local-asr = ["funasr-onnx", "onnxruntime", "modelscope", "funasr"]
 
 [project.scripts]
 ingest2md = "ingest2md.cli:main"

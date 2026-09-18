@@ -16,7 +16,6 @@ from bs4 import BeautifulSoup
 from ingest2md.config import Settings, load_settings
 from ingest2md.extractors.video import retain_media
 from ingest2md.htmlutils import clean_fragment, text_of_html
-from ingest2md.media.audio import _ffmpeg_bin
 from ingest2md.media.download import download_url
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
@@ -48,13 +47,9 @@ class XiaoyuzhouExtractor:
 
     def _extract(self, url: str, output_dir: Path) -> Document:
         settings = self.settings or load_settings()
-        if not settings.api_key:
-            raise ValueError("未配置 API Key；请设置 OPENCODE_API_KEY 或使用 --config")
-        _ffmpeg_bin("ffmpeg")
-        _ffmpeg_bin("ffprobe")
         html = fetch_episode_page(url)
         meta = parse_episode_page(html, url)
-        logger.info("小宇宙单集: %s；开始下载音频并转写（会消耗 API 额度）", meta["title"])
+        logger.info("小宇宙单集: %s；下载音频并使用 %s 转写", meta["title"], settings.asr_backend)
 
         with tempfile.TemporaryDirectory(prefix="ingest2md-xiaoyuzhou-") as temp:
             work = Path(temp)
@@ -72,12 +67,12 @@ class XiaoyuzhouExtractor:
             metadata.extend([
                 ("已处理（秒）", str(transcript.processed_seconds)),
                 ("转写时间", datetime.now(timezone.utc).isoformat(timespec="seconds")),
+                ("ASR 后端", settings.asr_backend),
                 ("转写模型", ", ".join(transcript.models)),
-                ("输出语言", "转写正文为简体中文（先按原语言转写，再翻译）"),
-                ("时间戳精度", "切段级，非逐句；转写与翻译可能有误差"),
+                ("语言", transcript.language or "原语言"),
+                ("输出", "原语言转写（未翻译）"),
+                ("时间戳精度", transcript.timestamp_precision),
             ])
-            if transcript.translation_models:
-                metadata.append(("翻译模型", ", ".join(transcript.translation_models)))
 
             body_parts: list[str] = []
             description = meta["description"].strip()
