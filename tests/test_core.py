@@ -120,7 +120,6 @@ def test_xiaoyuzhou_extractor_calls_shared_transcription(tmp_path: Path, monkeyp
     import ingest2md.extractors.xiaoyuzhou as xyz
 
     called = {"transcribe": False, "audio_url": ""}
-    monkeypatch.setattr(xyz, "_ffmpeg_bin", lambda name: name)
     monkeypatch.setattr(xyz, "fetch_episode_page", lambda url: NEXT_DATA_HTML)
 
     def fake_download(url, target, **kwargs):
