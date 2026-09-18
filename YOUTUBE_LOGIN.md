@@ -44,9 +44,106 @@ ingest2md "https://www.youtube.com/watch?v=VIDEO_ID" \
 
 它不会下载完整音频，也不会调用转写/翻译 API。
 
-## Cookie 导出建议
+## 如何拿到 YouTube 登录 Cookie
 
-用独立的浏览器隐私/无痕会话登录 YouTube，确认目标视频可播放后导出 Netscape 格式 Cookie；导出后关闭该独立会话，避免继续使用同一会话导致 Cookie 轮换。仅导出 YouTube/Google 登录所需 Cookie，妥善保管。
+`ingest2md` 使用 **Mozilla/Netscape 格式 cookies.txt 文件**。Cookie 本质上等同于登录凭据，不能提交到 Git、粘贴到 issue/聊天，或公开分享。
+
+### 推荐方法：专用无痕会话导出
+
+yt-dlp 当前针对 YouTube 的建议是尽量使用一个独立会话，因为 YouTube 会轮换账号 Cookie。
+
+1. 新开一个无痕/隐私窗口。
+2. 在这个窗口登录 YouTube，并确认目标视频可以正常播放。
+3. 在**同一个标签页**打开：
+
+```text
+https://www.youtube.com/robots.txt
+```
+
+4. 使用可信的 Cookie 导出工具，把当前 `youtube.com` 会话导出为 **Netscape / cookies.txt** 格式。Chromium 系浏览器可使用 yt-dlp FAQ 提到的 **Get cookies.txt LOCALLY**；Firefox 可使用兼容的 `cookies.txt` 导出扩展。若要在无痕窗口使用扩展，需要先允许该扩展在无痕/隐私模式运行。
+5. 建议保存为：
+
+```text
+youtube-cookies.txt
+```
+
+6. 导出后立即关闭整个无痕/隐私窗口，**不要继续使用刚才的登录会话**，避免 Cookie 被继续轮换。
+
+> 安装 Cookie 扩展时必须确认来源。yt-dlp FAQ 特别提醒过旧的 **Get cookies.txt**（不是 **Get cookies.txt LOCALLY**）曾被报告存在安全问题。
+
+文件第一行通常应是：
+
+```text
+# Netscape HTTP Cookie File
+```
+
+或：
+
+```text
+# HTTP Cookie File
+```
+
+Linux / macOS / WSL 可放到：
+
+```bash
+mkdir -p ~/.config/ingest2md
+mv ~/Downloads/youtube-cookies.txt ~/.config/ingest2md/youtube-cookies.txt
+chmod 600 ~/.config/ingest2md/youtube-cookies.txt
+```
+
+Windows 例如：
+
+```text
+C:\Users\<你的用户名>\.config\ingest2md\youtube-cookies.txt
+```
+
+### 更省事的方法：从普通浏览器配置直接导出
+
+yt-dlp 可以直接读取浏览器 Cookie：
+
+```bash
+yt-dlp --cookies-from-browser chrome --cookies youtube-cookies.txt
+```
+
+浏览器名称也可以是 `edge`、`firefox`、`brave`、`chromium`、`opera`、`vivaldi`、`safari` 等。
+
+但这个方法要注意：
+
+- 它可能导出**整个浏览器配置中的 Cookie**，不只 YouTube，因此文件更敏感；
+- 不适合拿来导出上面专门创建的无痕 YouTube 会话。yt-dlp 文档明确提醒，这种方式通常读取的是浏览器常规配置，而不是刚才的无痕会话。
+
+### Cookie 文件格式检查
+
+`ingest2md` 的 `--check-access` 会检查 Netscape 结构。手工查看时：
+
+- 第一行应类似 `# Netscape HTTP Cookie File`；
+- 后续记录通常是 7 列 Tab 分隔；
+- 应能看到 `.youtube.com` 等 YouTube 域记录。
+
+如果 yt-dlp 报 `HTTP Error 400: Bad Request`，还应检查文件换行：Windows 通常为 CRLF，Linux/macOS 通常为 LF。
+
+### 导出后先验证，不要直接跑完整转写
+
+```bash
+ingest2md "https://www.youtube.com/watch?v=VIDEO_ID" \
+  --youtube-cookies-file ~/.config/ingest2md/youtube-cookies.txt \
+  --check-access
+```
+
+Windows PowerShell：
+
+```powershell
+ingest2md "https://www.youtube.com/watch?v=VIDEO_ID" --youtube-cookies-file "C:\Users\<你的用户名>\.config\ingest2md\youtube-cookies.txt" --check-access
+```
+
+通过以后再正式执行：
+
+```bash
+ingest2md "https://www.youtube.com/watch?v=VIDEO_ID" \
+  --youtube-cookies-file ~/.config/ingest2md/youtube-cookies.txt
+```
+
+v0.7 会优先尝试平台字幕；只有没有可用字幕时才下载音频进入 ASR fallback。
 
 ## 错误分类
 
