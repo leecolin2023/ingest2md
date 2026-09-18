@@ -347,7 +347,7 @@ Markdown 默认按切段时间组织：
 
 ## Cookie
 
-YouTube 登录、Cookie、JS Runtime 与 403/PO Token 的详细诊断见 [`YOUTUBE_LOGIN.md`](YOUTUBE_LOGIN.md)。
+YouTube 登录、**登录 Cookie 获取步骤**、Cookie 校验、JS Runtime 与 403/PO Token 的详细诊断见 [`YOUTUBE_LOGIN.md`](YOUTUBE_LOGIN.md)。
 
 Cookie 统一使用 Netscape 格式：
 
