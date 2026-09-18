@@ -154,6 +154,28 @@ def _base_options(cookies_file: str = "") -> dict:
     return options
 
 
+def youtube_ydl_options(cookies_file: str = "") -> dict:
+    """Public yt-dlp options shared by normal YouTube acquisition paths."""
+    return _base_options(cookies_file)
+
+
+def metadata_from_info(info: dict, url: str) -> dict:
+    """Normalize yt-dlp info without performing another YouTube request."""
+    if not info or info.get("_type") in {"playlist", "multi_video"}:
+        raise ValueError("未取得单个 YouTube 视频元数据")
+    formats = info.get("formats") or []
+    audio_formats = [fmt for fmt in formats if fmt.get("acodec") not in {None, "none"}]
+    return {
+        "id": info.get("id") or "",
+        "title": info.get("title") or info.get("id") or "",
+        "uploader": info.get("uploader") or info.get("channel") or "",
+        "duration": info.get("duration") or 0,
+        "desc": info.get("description") or "",
+        "url": normalize_video_url(url),
+        "audio_formats": len(audio_formats),
+    }
+
+
 def classify_download_error(message: str) -> tuple[str, str]:
     """Map yt-dlp/YouTube failures to actionable categories."""
     lower = message.lower()
@@ -213,18 +235,7 @@ def probe_video(url: str, cookies_file: str = "") -> dict:
             info = ydl.extract_info(url, download=False)
     except DownloadError as exc:
         _raise_access_error(exc)
-    if not info or info.get("_type") in {"playlist", "multi_video"}:
-        raise ValueError("未取得单个 YouTube 视频元数据")
-    formats = info.get("formats") or []
-    audio_formats = [fmt for fmt in formats if fmt.get("acodec") not in {None, "none"}]
-    return {
-        "id": info.get("id") or "",
-        "title": info.get("title") or info.get("id") or "",
-        "uploader": info.get("uploader") or info.get("channel") or "",
-        "duration": info.get("duration") or 0,
-        "url": url,
-        "audio_formats": len(audio_formats),
-    }
+    return metadata_from_info(info, url)
 
 
 def check_access(url: str, cookies_file: str = "") -> dict:
@@ -284,14 +295,14 @@ def format_access_report(report: dict) -> str:
             f"频道: {video['uploader']}",
             f"时长: {video['duration']} 秒",
             "",
-            "检测通过：未下载完整音频，也未调用转写/翻译 API。",
+            "检测通过：这是独立的音频播放访问诊断；正常 ingestion 不再前置执行该 probe。",
         ])
     else:
         lines.extend([
             f"✗ YouTube 访问失败 [{report['error_kind'] or 'unknown'}]",
             report["error"] or "未知错误",
             "",
-            "检测结束：未调用转写/翻译 API。",
+            "检测结束：这是独立诊断结果；正常 ingestion 会先尝试字幕，不再以前置 probe 阻断。",
         ])
     return "\n".join(lines)
 

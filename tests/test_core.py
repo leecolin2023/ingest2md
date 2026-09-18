@@ -245,21 +245,35 @@ world
     assert result.segments[0].text == "Hello world"
 
 
-def test_youtube_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
+def test_youtube_subtitle_first_skips_probe_audio_and_asr(tmp_path: Path, monkeypatch):
     import ingest2md.extractors.youtube as yt
-    from ingest2md.media.subtitles import SubtitleCue, SubtitleTrack
+    from ingest2md.media.subtitles import SubtitleCue, SubtitleFetchResult, SubtitleTrack
 
     track = SubtitleTrack("en", "manual", [SubtitleCue(0, 10, "hello")])
-    monkeypatch.setattr(yt.source, "probe_video", lambda url, cookies: {
+    info = {
         "id": "dQw4w9WgXcQ", "title": "Demo", "uploader": "Channel",
-        "duration": 10, "desc": "", "url": url, "audio_formats": 1,
-    })
-    monkeypatch.setattr(yt, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: track)
-    transcript = TranscriptResult([Segment(0, 10, "你好")], ["manual-subtitle:en"], 10,
-                                  timestamp_precision="subtitle-window")
+        "duration": 10, "description": "Desc", "formats": [],
+    }
+    monkeypatch.setattr(
+        yt, "fetch_yt_dlp_subtitles_with_info",
+        lambda *args, **kwargs: SubtitleFetchResult(track=track, info=info),
+    )
+    monkeypatch.setattr(
+        yt.source, "probe_video",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("normal ingestion must not call probe_video")
+        ),
+    )
+    transcript = TranscriptResult(
+        [Segment(0, 10, "hello")], ["manual-subtitle:en"], 10,
+        timestamp_precision="subtitle-window", language="en",
+    )
     monkeypatch.setattr(yt, "subtitles_to_transcript", lambda *args, **kwargs: transcript)
     monkeypatch.setattr(yt, "transcribe_audio", lambda *args, **kwargs: (_ for _ in ()).throw(
         AssertionError("ASR should not run when subtitles exist")
+    ))
+    monkeypatch.setattr(yt.source, "download_video", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("audio should not download when subtitles exist and keep_audio is false")
     ))
     monkeypatch.setattr(yt, "attach_video_description", lambda doc, desc: None)
 
@@ -267,18 +281,29 @@ def test_youtube_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
     doc = asyncio.run(yt.YouTubeExtractor(settings).extract(
         "https://www.youtube.com/watch?v=dQw4w9WgXcQ", tmp_path
     ))
+    assert doc.title == "Demo"
     assert doc.transcript.models == ["manual-subtitle:en"]
     assert dict(doc.metadata)["内容获取"].startswith("平台字幕")
 
 
 def test_youtube_without_subtitle_falls_back_to_asr(tmp_path: Path, monkeypatch):
     import ingest2md.extractors.youtube as yt
+    from ingest2md.media.subtitles import SubtitleFetchResult
 
-    monkeypatch.setattr(yt.source, "probe_video", lambda url, cookies: {
+    info = {
         "id": "dQw4w9WgXcQ", "title": "Demo", "uploader": "Channel",
-        "duration": 10, "desc": "", "url": url, "audio_formats": 1,
-    })
-    monkeypatch.setattr(yt, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: None)
+        "duration": 10, "description": "", "formats": [],
+    }
+    monkeypatch.setattr(
+        yt, "fetch_yt_dlp_subtitles_with_info",
+        lambda *args, **kwargs: SubtitleFetchResult(track=None, info=info),
+    )
+    monkeypatch.setattr(
+        yt.source, "probe_video",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("normal ingestion must not call probe_video")
+        ),
+    )
     audio = tmp_path / "audio.m4a"
     audio.write_bytes(b"fake")
     monkeypatch.setattr(yt.source, "download_video", lambda *args, **kwargs: ({
@@ -300,6 +325,23 @@ def test_youtube_without_subtitle_falls_back_to_asr(tmp_path: Path, monkeypatch)
     ))
     assert called["asr"] is True
     assert dict(doc.metadata)["内容获取"] == "音频下载 + sensevoice ASR fallback"
+
+
+def test_youtube_metadata_from_subtitle_info_reuses_existing_info():
+    import ingest2md.media.youtube as youtube
+
+    meta = youtube.metadata_from_info({
+        "id": "abcdefghijk",
+        "title": "Title",
+        "channel": "Channel",
+        "duration": 42,
+        "description": "Description",
+        "formats": [{"acodec": "opus"}, {"acodec": "none"}],
+    }, "https://www.youtube.com/watch?v=abcdefghijk")
+    assert meta["id"] == "abcdefghijk"
+    assert meta["uploader"] == "Channel"
+    assert meta["desc"] == "Description"
+    assert meta["audio_formats"] == 1
 
 
 def test_bilibili_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
