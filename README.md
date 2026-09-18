@@ -87,7 +87,7 @@ python -m camoufox fetch
 python -m pip install -e ".[local-asr]"
 ```
 
-`local-asr` 会安装 `funasr-onnx + onnxruntime + modelscope`。第一次真正使用 SenseVoice 时会自动下载/定位 `iic/SenseVoiceSmall`；也可以通过 `sensevoice_model_dir` 指向已有本地模型。音视频 ASR 仍需要系统可用的 `ffmpeg` / `ffprobe`。
+`local-asr` 会安装 `funasr-onnx + onnxruntime + modelscope + funasr`。第一次真正使用 SenseVoice 时会自动下载/定位 `iic/SenseVoiceSmall`；如目录中尚无 ONNX，`funasr-onnx` 可借助 FunASR 完成首次导出。也可以通过 `sensevoice_model_dir` 指向已经准备好的本地 ONNX 模型目录。音视频 ASR 仍需要系统可用的 `ffmpeg` / `ffprobe`。
 
 YouTube 建议安装当前版 Deno 或 Node.js；遇到登录/机器人校验时提供 Cookie。
 
