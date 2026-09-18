@@ -3,47 +3,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ingest2md.cookies import parse_netscape_cookie_file
+
 
 def load_netscape_cookies(path: str, domain_contains: str = "") -> list[dict]:
-    """Parse a Netscape cookie file into Playwright cookie dictionaries.
-
-    The helper intentionally accepts the common yt-dlp/browser export format so
-    users do not need another cookie format just for web extractors.
-    """
-    if not path:
-        return []
-    file = Path(path).expanduser()
-    if not file.is_file():
-        raise ValueError(f"Cookie 文件不存在: {file}")
+    """Convert shared Netscape cookie records to Playwright dictionaries."""
     cookies: list[dict] = []
-    for raw in file.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = raw.strip()
-        http_only = False
-        if line.startswith("#HttpOnly_"):
-            line = line[len("#HttpOnly_"):]
-            http_only = True
-        elif not line or line.startswith("#"):
-            continue
-        parts = line.split("\t")
-        if len(parts) < 7:
-            continue
-        domain, _include_sub, cookie_path, secure, expires, name, value = parts[:7]
-        if domain_contains and domain_contains not in domain:
+    for record in parse_netscape_cookie_file(path):
+        domain = record["domain"]
+        if domain_contains and domain_contains.lower() not in domain.lower():
             continue
         item = {
-            "name": name,
-            "value": value,
+            "name": record["name"],
+            "value": record["value"],
             "domain": domain,
-            "path": cookie_path or "/",
-            "secure": secure.upper() == "TRUE",
-            "httpOnly": http_only,
+            "path": record["path"],
+            "secure": record["secure"],
+            "httpOnly": record["http_only"],
         }
-        try:
-            expiry = int(expires)
-            if expiry > 0:
-                item["expires"] = expiry
-        except ValueError:
-            pass
+        if record["expires"] > 0:
+            item["expires"] = record["expires"]
         cookies.append(item)
     return cookies
 

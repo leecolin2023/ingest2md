@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ingest2md.config import Settings, load_settings
+from ingest2md.extractors.video import retain_media
 from ingest2md.media.audio import probe_duration
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
@@ -75,23 +75,8 @@ class LocalMediaExtractor:
                 body_md="## 转写正文\n\n" + render_markdown(transcript),
                 transcript=transcript,
             )
-            self._retain_optional_files(doc, path, work, output_dir, settings)
+            retain_media(
+                doc, str(path), work, output_dir, settings,
+                retained_filename="source_media" + path.suffix.lower(),
+            )
             return doc
-
-    @staticmethod
-    def _retain_optional_files(doc: Document, source_path: Path, work: Path,
-                               output_dir: Path, settings: Settings) -> None:
-        doc_dir = output_dir / doc.dirname
-        if settings.keep_audio:
-            doc_dir.mkdir(parents=True, exist_ok=True)
-            filename = "source_media" + source_path.suffix.lower()
-            shutil.copy2(source_path, doc_dir / filename)
-            doc.attachments.append(filename)
-        if settings.keep_chunks:
-            for chunk in sorted((work / "chunks").glob("*")):
-                if not chunk.is_file():
-                    continue
-                target = doc_dir / "chunks" / chunk.name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(chunk, target)
-                doc.attachments.append(f"chunks/{chunk.name}")

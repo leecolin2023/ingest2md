@@ -24,3 +24,10 @@ def clean_fragment(html: str) -> str:
 def text_of_html(html: str) -> str:
     soup = BeautifulSoup(html or "", "html.parser")
     return " ".join(soup.stripped_strings)
+
+
+def meta_content(soup: BeautifulSoup, *, prop: str = "", name: str = "") -> str:
+    """Return one HTML meta content value by property or name."""
+    attrs = {"property": prop} if prop else {"name": name}
+    node = soup.find("meta", attrs=attrs)
+    return (node.get("content") or "").strip() if node else ""

@@ -19,6 +19,7 @@ from ingest2md.browser import load_netscape_cookies, launch_chromium
 from ingest2md.config import Settings, load_settings
 from ingest2md.htmlutils import clean_fragment
 from ingest2md.model import Document
+from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
@@ -26,11 +27,6 @@ logger = logging.getLogger(__name__)
 _HOSTS = {"zhihu.com", "www.zhihu.com"}
 _QUESTION_RE = re.compile(r"/question/(\d+)(?:/answer/(\d+))?")
 _ANSWER_RE = re.compile(r"/question/(\d+)/answer/(\d+)")
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0 Safari/537.36"
-)
-
 
 @dataclass
 class ZhihuAnswer:
@@ -74,7 +70,7 @@ class ZhihuExtractor:
         from playwright.async_api import async_playwright
         async with async_playwright() as p:
             browser = await launch_chromium(p, headless=True)
-            context = await browser.new_context(user_agent=_USER_AGENT, locale="zh-CN")
+            context = await browser.new_context(user_agent=DEFAULT_USER_AGENT, locale="zh-CN")
             cookie_file = settings.zhihu_cookies_file or settings.cookies_file
             if cookie_file:
                 cookies = load_netscape_cookies(cookie_file, "zhihu.com")

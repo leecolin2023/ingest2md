@@ -7,6 +7,8 @@ from pathlib import Path
 from shutil import which
 from urllib.parse import parse_qs, urlparse
 
+from ingest2md.cookies import parse_netscape_cookie_file
+
 
 HOSTS = {
     "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
@@ -82,7 +84,7 @@ def _selected_runtime() -> dict | None:
 
 
 def validate_cookie_file(cookies_file: str, domain_hint: str = "youtube") -> dict:
-    """Validate the shape of a Netscape cookie file without exposing secret values."""
+    """Validate a Netscape cookie file using the shared parser."""
     if not cookies_file:
         return {
             "configured": False, "path": "", "exists": False, "valid": False,
@@ -98,33 +100,22 @@ def validate_cookie_file(cookies_file: str, domain_hint: str = "youtube") -> dic
         result["message"] = "Cookie 文件不存在"
         return result
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError as exc:
+        cookies = parse_netscape_cookie_file(str(path))
+    except (OSError, ValueError) as exc:
         result["message"] = f"Cookie 文件无法读取: {exc}"
         return result
 
-    domains: list[str] = []
-    count = 0
-    for raw in lines:
-        line = raw.strip("\r\n")
-        if not line or (line.startswith("#") and not line.startswith("#HttpOnly_")):
-            continue
-        if line.startswith("#HttpOnly_"):
-            line = line[len("#HttpOnly_"):]
-        parts = line.split("\t")
-        if len(parts) < 7:
-            continue
-        count += 1
-        domains.append(parts[0].lower())
-    result["cookie_count"] = count
-    result["domain_match"] = any(domain_hint in domain for domain in domains)
-    result["valid"] = count > 0
+    result["cookie_count"] = len(cookies)
+    result["domain_match"] = any(
+        domain_hint.lower() in str(cookie["domain"]).lower() for cookie in cookies
+    )
+    result["valid"] = bool(cookies)
     if not result["valid"]:
         result["message"] = "未发现 Netscape 格式 Cookie 记录（应为 7 列制表符分隔）"
     elif not result["domain_match"]:
         result["message"] = f"Cookie 文件格式有效，但未发现 {domain_hint} 域记录"
     else:
-        result["message"] = f"Cookie 文件格式有效，共 {count} 条记录"
+        result["message"] = f"Cookie 文件格式有效，共 {len(cookies)} 条记录"
     return result
 
 
@@ -220,7 +211,7 @@ def _raise_access_error(exc: Exception) -> None:
     raise YouTubeAccessError(kind, friendly) from exc
 
 
-def probe_video(url: str, cookies_file: str = "") -> dict:
+def probe_playback_access(url: str, cookies_file: str = "") -> dict:
     """Verify metadata/audio access without downloading media or consuming transcription API."""
     url = normalize_video_url(url)
     options = _base_options(cookies_file)
@@ -250,7 +241,7 @@ def check_access(url: str, cookies_file: str = "") -> dict:
         "video": None,
     }
     try:
-        report["video"] = probe_video(url, cookies_file)
+        report["video"] = probe_playback_access(url, cookies_file)
         report["ok"] = True
     except YouTubeAccessError as exc:
         report["error_kind"] = exc.kind

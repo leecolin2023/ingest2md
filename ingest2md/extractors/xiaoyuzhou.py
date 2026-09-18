@@ -15,7 +15,8 @@ from bs4 import BeautifulSoup
 
 from ingest2md.config import Settings, load_settings
 from ingest2md.extractors.video import retain_media
-from ingest2md.htmlutils import clean_fragment, text_of_html
+from ingest2md.htmlutils import clean_fragment, meta_content, text_of_html
+from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.media.download import download_url
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
@@ -26,11 +27,6 @@ logger = logging.getLogger(__name__)
 _HOSTS = {"xiaoyuzhoufm.com", "www.xiaoyuzhoufm.com"}
 _EPISODE_RE = re.compile(r"/episode/([0-9a-fA-F]{24})(?:/|$)")
 _AUDIO_RE = re.compile(r"https://media\.xyzcdn\.net/[^\"'\\\s<>]+\.(?:m4a|mp3|aac|wav)(?:\?[^\"'\\\s<>]*)?", re.I)
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0 Safari/537.36"
-)
-
 
 class XiaoyuzhouExtractor:
     name = "小宇宙播客"
@@ -102,19 +98,13 @@ class XiaoyuzhouExtractor:
 
 def fetch_episode_page(url: str) -> str:
     with httpx.Client(
-        headers={"User-Agent": _USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
+        headers={"User-Agent": DEFAULT_USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
         follow_redirects=True,
         timeout=25,
     ) as client:
         response = client.get(url)
         response.raise_for_status()
         return response.text
-
-
-def _meta(soup: BeautifulSoup, prop: str = "", name: str = "") -> str:
-    attrs = {"property": prop} if prop else {"name": name}
-    node = soup.find("meta", attrs=attrs)
-    return (node.get("content") or "").strip() if node else ""
 
 
 def _walk_dicts(value):
@@ -156,14 +146,14 @@ def parse_episode_page(html: str, url: str) -> dict[str, object]:
     enclosure = episode.get("enclosure") or {}
     audio_url = enclosure.get("url", "") if isinstance(enclosure, dict) else str(enclosure or "")
     if not audio_url:
-        audio_url = _meta(soup, prop="og:audio")
+        audio_url = meta_content(soup, prop="og:audio")
     if not audio_url:
         match = _AUDIO_RE.search(html)
         audio_url = match.group(0) if match else ""
     if not audio_url:
         raise RuntimeError("未能从小宇宙公开页面取得音频地址；页面结构可能已变化")
 
-    title = str(episode.get("title") or _meta(soup, prop="og:title") or "小宇宙播客").strip()
+    title = str(episode.get("title") or meta_content(soup, prop="og:title") or "小宇宙播客").strip()
     podcast = episode.get("podcast") or {}
     podcast_title = str(podcast.get("title") or "") if isinstance(podcast, dict) else ""
     if not podcast_title:
@@ -178,7 +168,7 @@ def parse_episode_page(html: str, url: str) -> dict[str, object]:
     if description and "<" in description and ">" in description:
         description = clean_fragment(description)
     if not description:
-        description = _meta(soup, prop="og:description") or _meta(soup, name="description")
+        description = meta_content(soup, prop="og:description") or meta_content(soup, name="description")
     if not description and raw_shownotes:
         description = text_of_html(raw_shownotes)
 

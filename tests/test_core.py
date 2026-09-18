@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ingest2md.browser import load_netscape_cookies
+from ingest2md.cookies import parse_netscape_cookie_file
 from ingest2md.config import Settings
 from ingest2md.extractors.base import SourceUnavailableError
 from ingest2md.extractors.deferred_media import DeferredMediaExtractor
@@ -259,7 +260,7 @@ def test_youtube_subtitle_first_skips_probe_audio_and_asr(tmp_path: Path, monkey
         lambda *args, **kwargs: SubtitleFetchResult(track=track, info=info),
     )
     monkeypatch.setattr(
-        yt.source, "probe_video",
+        yt.source, "probe_playback_access",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("normal ingestion must not call probe_video")
         ),
@@ -299,7 +300,7 @@ def test_youtube_without_subtitle_falls_back_to_asr(tmp_path: Path, monkeypatch)
         lambda *args, **kwargs: SubtitleFetchResult(track=None, info=info),
     )
     monkeypatch.setattr(
-        yt.source, "probe_video",
+        yt.source, "probe_playback_access",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("normal ingestion must not call probe_video")
         ),
@@ -488,3 +489,37 @@ def test_legacy_cloud_config_maps_to_llm_without_translation(tmp_path: Path):
     assert settings.llm_model == "old-model"
     assert settings.llm_chunk_seconds == 123
     assert not hasattr(settings, "translation_model")
+
+
+def test_shared_cookie_parser_drives_browser_and_youtube_validation(tmp_path: Path):
+    from ingest2md.media.youtube import validate_cookie_file
+
+    cookie = tmp_path / "cookies.txt"
+    cookie.write_text(
+        "# Netscape HTTP Cookie File\n"
+        "#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t1893456000\tSID\tsecret\n",
+        encoding="utf-8",
+    )
+    records = parse_netscape_cookie_file(str(cookie))
+    assert len(records) == 1
+    assert records[0]["domain"] == ".youtube.com"
+    assert records[0]["http_only"] is True
+
+    playwright = load_netscape_cookies(str(cookie), "youtube.com")
+    assert playwright[0]["httpOnly"] is True
+    assert playwright[0]["secure"] is True
+
+    status = validate_cookie_file(str(cookie))
+    assert status["valid"] is True
+    assert status["domain_match"] is True
+    assert status["cookie_count"] == 1
+
+
+def test_registry_injects_settings_without_cli_type_list():
+    from ingest2md.extractors import get_extractors
+    from ingest2md.extractors.youtube import YouTubeExtractor
+
+    settings = Settings(asr_backend="llm")
+    extractors = get_extractors(settings)
+    youtube = next(item for item in extractors if isinstance(item, YouTubeExtractor))
+    assert youtube.settings is settings

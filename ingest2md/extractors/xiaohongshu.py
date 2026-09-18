@@ -14,17 +14,13 @@ from bs4 import BeautifulSoup
 
 from ingest2md.browser import load_netscape_cookies, launch_chromium
 from ingest2md.config import Settings, load_settings
-from ingest2md.htmlutils import clean_fragment
+from ingest2md.htmlutils import clean_fragment, meta_content
+from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.model import Document, sanitize_filename
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
 _HOSTS = {"xiaohongshu.com", "www.xiaohongshu.com", "xhslink.com", "www.xhslink.com"}
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0 Safari/537.36"
-)
-
 
 class XiaohongshuExtractor:
     name = "小红书笔记"
@@ -41,7 +37,7 @@ class XiaohongshuExtractor:
         from playwright.async_api import async_playwright
         async with async_playwright() as p:
             browser = await launch_chromium(p, headless=True)
-            context = await browser.new_context(user_agent=_USER_AGENT, locale="zh-CN")
+            context = await browser.new_context(user_agent=DEFAULT_USER_AGENT, locale="zh-CN")
             cookie_file = settings.xiaohongshu_cookies_file or settings.cookies_file
             if cookie_file:
                 cookies = load_netscape_cookies(cookie_file, "xiaohongshu.com")
@@ -87,12 +83,7 @@ def _note_id(url: str) -> str:
 
 def parse_note_page(html: str, url: str) -> tuple[str, str, str, list[str]]:
     soup = BeautifulSoup(html, "html.parser")
-    def meta(prop: str = "", name: str = "") -> str:
-        attrs = {"property": prop} if prop else {"name": name}
-        node = soup.find("meta", attrs=attrs)
-        return (node.get("content") or "").strip() if node else ""
-
-    title = meta(prop="og:title") or meta(name="twitter:title")
+    title = meta_content(soup, prop="og:title") or meta_content(soup, name="twitter:title")
     if not title:
         node = soup.select_one("#detail-title, .title, .note-title")
         title = node.get_text(" ", strip=True) if node else "小红书笔记"
@@ -101,10 +92,10 @@ def parse_note_page(html: str, url: str) -> tuple[str, str, str, list[str]]:
     body_node = soup.select_one("#detail-desc, .note-text, .desc, .note-content, .content")
     body = clean_fragment(str(body_node)) if body_node else ""
     if not body:
-        body = meta(prop="og:description") or meta(name="description")
+        body = meta_content(soup, prop="og:description") or meta_content(soup, name="description")
 
     urls = []
-    og_image = meta(prop="og:image")
+    og_image = meta_content(soup, prop="og:image")
     if og_image:
         urls.append(og_image)
     for img in soup.select(".swiper-slide img[src], .note-slider img[src], .carousel img[src], .note-content img[src]"):

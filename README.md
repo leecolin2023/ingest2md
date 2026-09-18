@@ -12,9 +12,20 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.8.2：Maintenance cleanup
+
+本版不新增功能、不改变用户行为，只收敛容易产生双重维护的内部实现：
+
+- 本地媒体与网络媒体统一使用 `retain_media()`；
+- Netscape Cookie 只保留一套底层 parser，浏览器与 YouTube 诊断分别做轻量适配；
+- Extractor registry 同时负责顺序与 Settings 注入，CLI 不再维护一份平台类型名单；
+- YouTube 音频访问诊断函数改名为 `probe_playback_access()`，避免被误当作普通 metadata probe；
+- 浏览器 User-Agent 统一为一个常量；
+- HTML meta 读取统一到 `htmlutils.meta_content()`。
+
 ## v0.8.1：YouTube 获取链路修复
 
-- 正常 YouTube ingestion **不再前置调用 `probe_video()`**；`probe_video` 只保留给 `--check-access`。
+- 正常 YouTube ingestion **不再前置调用 `probe_playback_access()`**；`probe_video` 只保留给 `--check-access`。
 - 先直接探测人工/自动字幕；有字幕时复用同一次 yt-dlp `info` 作为标题、频道、时长等元数据，不再额外做音频播放 probe。
 - YouTube 字幕探测与音频下载复用同一套 Cookie、重试和 JS runtime 配置。
 - 没有可用字幕时才进入音频下载 → ASR fallback。

@@ -22,8 +22,8 @@ class UnsupportedURLError(Exception):
         self.supported = supported
 
 
-def find_extractor(reference: str) -> Extractor:
-    supported = get_extractors()
+def find_extractor(reference: str, settings=None) -> Extractor:
+    supported = get_extractors(settings)
     for extractor in supported:
         if extractor.match(reference):
             return extractor
