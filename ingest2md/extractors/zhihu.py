@@ -19,7 +19,7 @@ from ingest2md.browser import load_netscape_cookies, launch_chromium
 from ingest2md.config import Settings, load_settings
 from ingest2md.htmlutils import clean_fragment
 from ingest2md.model import Document
-from ingest2md.netutils import DEFAULTDEFAULT_USER_AGENT
+from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
