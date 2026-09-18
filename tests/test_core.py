@@ -280,7 +280,6 @@ def test_youtube_without_subtitle_falls_back_to_asr(tmp_path: Path, monkeypatch)
         "duration": 10, "desc": "", "url": url, "audio_formats": 1,
     })
     monkeypatch.setattr(yt, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: None)
-    monkeypatch.setattr(yt, "_ffmpeg_bin", lambda name: name)
     audio = tmp_path / "audio.m4a"
     audio.write_bytes(b"fake")
     monkeypatch.setattr(yt.source, "download_video", lambda *args, **kwargs: ({
@@ -293,7 +292,7 @@ def test_youtube_without_subtitle_falls_back_to_asr(tmp_path: Path, monkeypatch)
         called["asr"] = True
         return transcript
     monkeypatch.setattr(yt, "transcribe_audio", fake_asr)
-    monkeypatch.setattr(yt, "localize_metadata", lambda doc, desc, settings: None)
+    monkeypatch.setattr(yt, "attach_video_description", lambda doc, desc: None)
     monkeypatch.setattr(yt, "retain_media", lambda *args, **kwargs: None)
 
     settings = Settings(output_dir=str(tmp_path))
