@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from ingest2md.browser import load_netscape_cookies, launch_chromium
 from ingest2md.config import Settings, load_settings
 from ingest2md.htmlutils import clean_fragment, meta_content
-from ingest2md.netutils import DEFAULTDEFAULT_USER_AGENT
+from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.model import Document, sanitize_filename
 from ingest2md.urlutils import host_of
 
