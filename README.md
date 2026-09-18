@@ -99,7 +99,7 @@ python -m pip install -e ".[documents]"
 
 ## 输入已经不是只有 URL
 
-v0.7 把输入统一为：
+当前把输入统一为：
 
 ```text
 Content Reference
@@ -333,7 +333,7 @@ ingest2md "./video.mp4" --keep-audio --keep-chunks
 
 普通网页先用 HTTP 获取，再由 **Trafilatura** 提取主正文；如果结果为空则使用现有轻量 HTML 解析兜底。如果正文仍明显不足或 HTTP 获取失败，才退回 Playwright 浏览器渲染后再次抽取。`ingest2md` 不自行建设更重的 crawler/browser 基础设施。
 
-Generic Web 永远排在更具体的平台之后。v0.6 路由优先级大致为：
+Generic Web 永远排在更具体的平台之后。当前路由优先级大致为：
 
 ```text
 已识别但暂缓的平台
