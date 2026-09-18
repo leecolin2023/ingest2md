@@ -143,7 +143,7 @@ ingest2md "https://www.youtube.com/watch?v=VIDEO_ID" \
   --youtube-cookies-file ~/.config/ingest2md/youtube-cookies.txt
 ```
 
-v0.7 会优先尝试平台字幕；只有没有可用字幕时才下载音频进入 ASR fallback。
+v0.8 会优先尝试平台字幕；有字幕时直接保留原语言，不调用 ASR 或 LLM。只有没有可用字幕时才下载音频，并进入配置的 ASR backend（默认 SenseVoice 本地转写）。
 
 ## 错误分类
 
