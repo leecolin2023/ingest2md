@@ -4,11 +4,11 @@ import re
 import requests
 from urllib.parse import parse_qs, urlparse
 
+from ingest2md.netutils import DEFAULT_USER_AGENT
+
 VIEW_API = "https://api.bilibili.com/x/web-interface/view"
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-           "Referer": "https://www.bilibili.com/"}
+HEADERS = {"User-Agent": DEFAULT_USER_AGENT, "Referer": "https://www.bilibili.com/"}
 
 BV_RE = re.compile(r"(BV[0-9A-Za-z]{10})")
 

@@ -5,10 +5,7 @@ from pathlib import Path
 
 import httpx
 
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0 Safari/537.36"
-)
+from ingest2md.netutils import DEFAULTDEFAULT_USER_AGENT
 
 
 def download_url(url: str, target: Path, *, max_bytes: int = 750 * 1024 * 1024) -> Path:
@@ -17,7 +14,7 @@ def download_url(url: str, target: Path, *, max_bytes: int = 750 * 1024 * 1024) 
     written = 0
     try:
         with httpx.Client(
-            headers={"User-Agent": _USER_AGENT, "Accept": "*/*"},
+            headers={"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"},
             follow_redirects=True,
             timeout=httpx.Timeout(30.0, read=120.0),
         ) as client:

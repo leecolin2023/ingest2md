@@ -14,16 +14,12 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ingest2md.browser import launch_chromium
-from ingest2md.htmlutils import clean_fragment
+from ingest2md.htmlutils import clean_fragment, meta_content
+from ingest2md.netutils import DEFAULTDEFAULT_USER_AGENT
 from ingest2md.model import Document
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
-
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0 Safari/537.36"
-)
 
 
 class GenericWebExtractor:
@@ -52,7 +48,7 @@ class GenericWebExtractor:
 
 async def _fetch_http(url: str) -> str:
     async with httpx.AsyncClient(
-        headers={"User-Agent": _USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
+        headers={"User-Agent": DEFAULT_USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
         follow_redirects=True,
         timeout=20,
     ) as client:
@@ -65,7 +61,7 @@ async def _fetch_browser(url: str) -> tuple[str, str]:
     from playwright.async_api import async_playwright
     async with async_playwright() as p:
         browser = await launch_chromium(p, headless=True)
-        context = await browser.new_context(user_agent=_USER_AGENT, locale="zh-CN")
+        context = await browser.new_context(user_agent=DEFAULT_USER_AGENT, locale="zh-CN")
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         await page.wait_for_timeout(1200)
@@ -73,14 +69,6 @@ async def _fetch_browser(url: str) -> tuple[str, str]:
         final_url = page.url
         await browser.close()
     return html, final_url
-
-
-def _meta(soup: BeautifulSoup, *keys: tuple[str, str]) -> str:
-    for attr, value in keys:
-        node = soup.find("meta", attrs={attr: value})
-        if node and node.get("content"):
-            return node["content"].strip()
-    return ""
 
 
 def _best_content_node(soup: BeautifulSoup):
@@ -103,13 +91,13 @@ def _best_content_node(soup: BeautifulSoup):
 def parse_web_page(html: str, url: str) -> Document:
     soup = BeautifulSoup(html, "html.parser")
     title = (
-        _meta(soup, ("property", "og:title"), ("name", "twitter:title"))
+        meta_content(soup, prop="og:title") or meta_content(soup, name="twitter:title")
         or (soup.title.get_text(" ", strip=True) if soup.title else "")
         or host_of(url)
         or "网页"
     )
-    author = _meta(soup, ("name", "author"), ("property", "article:author"))
-    published = _meta(soup, ("property", "article:published_time"), ("name", "date"))
+    author = meta_content(soup, name="author") or meta_content(soup, prop="article:author")
+    published = meta_content(soup, prop="article:published_time") or meta_content(soup, name="date")
     body = ""
     try:
         from trafilatura import extract as trafilatura_extract
