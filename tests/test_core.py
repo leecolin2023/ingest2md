@@ -132,7 +132,7 @@ def test_xiaoyuzhou_extractor_calls_shared_transcription(tmp_path: Path, monkeyp
         called["transcribe"] = True
         return TranscriptResult(
             [Segment(0, 60, "中文转写")],
-            ["mock-asr"], 60,,
+            ["mock-asr"], 60,
         )
 
     monkeypatch.setattr(xyz, "download_url", fake_download)
