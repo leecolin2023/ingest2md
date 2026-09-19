@@ -29,7 +29,47 @@ def probe_duration(audio_path: str) -> float:
 
 def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
                  out_dir: str | Path, *, extension: str, codec_args: list[str]) -> list[dict]:
-    """Split media with one ffmpeg process instead of spawning once per chunk."""
+    """Compatibility path: encode each chunk separately.
+
+    Cloud backends keep their existing behavior; the optimized single-process
+    segmentation below is intentionally limited to local SenseVoice WAV chunks.
+    """
+    if chunk_seconds <= 0 or limit_seconds < 0:
+        raise ValueError("切段时长必须大于零，处理时长不能为负数")
+    src = Path(audio_path)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    total = probe_duration(str(src))
+    if limit_seconds and limit_seconds < total:
+        total = limit_seconds
+
+    chunks: list[dict] = []
+    index = 0
+    start = 0.0
+    while start < total - 0.5:
+        end = min(start + chunk_seconds, total)
+        target = out_dir / f"chunk_{index:04d}.{extension}"
+        cmd = [
+            _ffmpeg_bin("ffmpeg"), "-y", "-v", "error",
+            "-ss", str(start), "-to", str(end), "-i", str(src), "-vn",
+            *codec_args, str(target),
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+        chunks.append({
+            "path": str(target),
+            "start": round(start, 3),
+            "end": round(end, 3),
+        })
+        index += 1
+        start = end
+    return chunks
+
+
+def _segment_audio_once(audio_path: str, chunk_seconds: int, limit_seconds: int,
+                        out_dir: str | Path, *, extension: str,
+                        codec_args: list[str]) -> list[dict]:
+    """Split local ASR audio with one ffmpeg process."""
     if chunk_seconds <= 0 or limit_seconds < 0:
         raise ValueError("切段时长必须大于零，处理时长不能为负数")
     src = Path(audio_path)
@@ -42,8 +82,6 @@ def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
     if total <= 0.5:
         return []
 
-    # Temporary work directories are normally empty, but clearing matching stale
-    # files makes retries deterministic when callers intentionally reuse one.
     for stale in out_dir.glob(f"chunk_*.{extension}"):
         try:
             stale.unlink()
@@ -93,8 +131,8 @@ def chunk_audio_mp3(audio_path: str, chunk_seconds: int, limit_seconds: int,
 
 def chunk_audio_wav(audio_path: str, chunk_seconds: int, limit_seconds: int,
                     out_dir: str | Path) -> list[dict]:
-    """16kHz mono PCM WAV for SenseVoice ONNX."""
-    return _chunk_audio(
+    """16kHz mono PCM WAV for SenseVoice ONNX, segmented in one ffmpeg process."""
+    return _segment_audio_once(
         audio_path, chunk_seconds, limit_seconds, out_dir,
         extension="wav",
         codec_args=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"],
