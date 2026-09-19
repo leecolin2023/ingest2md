@@ -1,4 +1,4 @@
-# ingest2md v0.8 example configuration
+# ingest2md v0.8.3 example configuration
 
 # Local-first transcription. No paid API is required for the default path.
 asr_backend: "sensevoice"       # sensevoice | openai | llm
@@ -8,8 +8,8 @@ subtitle_window_seconds: 300
 
 # SenseVoice ONNX. Leave model_dir empty to download iic/SenseVoiceSmall on first use.
 sensevoice_model_dir: ""
-sensevoice_chunk_seconds: 20
-sensevoice_batch_size: 1
+sensevoice_chunk_seconds: 30
+sensevoice_batch_size: 4
 sensevoice_quantize: true
 
 # Optional OpenAI-compatible /audio/transcriptions backend.
