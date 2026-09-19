@@ -29,6 +29,7 @@ def probe_duration(audio_path: str) -> float:
 
 def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
                  out_dir: str | Path, *, extension: str, codec_args: list[str]) -> list[dict]:
+    """Split media with one ffmpeg process instead of spawning once per chunk."""
     if chunk_seconds <= 0 or limit_seconds < 0:
         raise ValueError("切段时长必须大于零，处理时长不能为负数")
     src = Path(audio_path)
@@ -37,27 +38,46 @@ def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
 
     total = probe_duration(str(src))
     if limit_seconds and limit_seconds < total:
-        total = limit_seconds
+        total = float(limit_seconds)
+    if total <= 0.5:
+        return []
 
+    # Temporary work directories are normally empty, but clearing matching stale
+    # files makes retries deterministic when callers intentionally reuse one.
+    for stale in out_dir.glob(f"chunk_*.{extension}"):
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+    target_pattern = out_dir / f"chunk_%04d.{extension}"
+    cmd = [
+        _ffmpeg_bin("ffmpeg"), "-y", "-v", "error",
+        "-i", str(src), "-vn",
+    ]
+    if limit_seconds and limit_seconds < probe_duration(str(src)):
+        cmd.extend(["-t", str(total)])
+    cmd.extend([
+        *codec_args,
+        "-f", "segment",
+        "-segment_time", str(chunk_seconds),
+        "-reset_timestamps", "1",
+        str(target_pattern),
+    ])
+    subprocess.run(cmd, check=True, capture_output=True)
+
+    files = sorted(out_dir.glob(f"chunk_*.{extension}"))
     chunks: list[dict] = []
-    index = 0
-    start = 0.0
-    while start < total - 0.5:
+    for index, target in enumerate(files):
+        start = index * chunk_seconds
+        if start >= total - 0.5:
+            break
         end = min(start + chunk_seconds, total)
-        target = out_dir / f"chunk_{index:04d}.{extension}"
-        cmd = [
-            _ffmpeg_bin("ffmpeg"), "-y", "-v", "error",
-            "-ss", str(start), "-to", str(end), "-i", str(src), "-vn",
-            *codec_args, str(target),
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)
         chunks.append({
             "path": str(target),
-            "start": round(start, 3),
-            "end": round(end, 3),
+            "start": round(float(start), 3),
+            "end": round(float(end), 3),
         })
-        index += 1
-        start = end
     return chunks
 
 
