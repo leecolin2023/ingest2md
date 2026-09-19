@@ -17,13 +17,13 @@ v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认�
 本版只优化本地 SenseVoice 链路，不改变字幕优先、ASR backend 或 Markdown 输出结构：
 
 - SenseVoice 默认切片由 20 秒调整为 **30 秒**；
-- 默认批量推理由 batch=1 调整为 **batch=4**，并真正以文件列表批量调用模型；
+- 默认批量推理由 batch=1 调整为 **batch=2**，并真正以文件列表批量调用模型；
 - 音频切片从“每段启动一次 ffmpeg”改为 **单次 ffmpeg segment**；
-- 新增 `--sensevoice-batch-size`，便于本机测试 batch=4 / 8；
+- 新增 `--sensevoice-batch-size`，便于本机测试 batch=2 / 4；
 - 日志增加预处理、模型准备、推理、总耗时、model calls、realtime speed 与 RTF；
 - `local-asr` 补充 `onnxscript`，降低首次 ONNX 导出阶段缺依赖失败的概率。
 
-默认值选择保守的 `30s / batch=4`；batch=8 是否更快取决于 CPU 与内存，不直接作为公共默认值。
+默认值选择更稳妥的 `30s / batch=2`；内存和 CPU 余量较大的机器可显式尝试 `batch=4`。
 
 ## v0.8.2：Maintenance cleanup
 
@@ -289,7 +289,7 @@ v0.8 不再让一个统一的 300 秒切片规则绑住所有 ASR。流程变成
 本地文件 / 已下载媒体
  ↓
 ASR backend
- ├─ sensevoice（默认）→ 30秒 16k mono PCM WAV → batch=4 SenseVoiceSmall ONNX
+ ├─ sensevoice（默认）→ 30秒 16k mono PCM WAV → batch=2 SenseVoiceSmall ONNX
  ├─ openai           → 较长 MP3 → /audio/transcriptions
  └─ llm              → MP3 → chat/responses + input_audio
  ↓
@@ -444,7 +444,7 @@ CLI 显式参数 > 对应环境变量 > config.yaml > 默认值
 | `--asr-backend` | `sensevoice` |
 | `--asr-language` | `auto` |
 | `--sensevoice-chunk-seconds` | `30`（允许 5–30） |
-| `--sensevoice-batch-size` | `4`（可按本机性能尝试 `8`） |
+| `--sensevoice-batch-size` | `2`（内存和 CPU 余量较大时可尝试 `4`） |
 | `--limit-seconds` | `0`，完整媒体 |
 | `--keep-audio` | `false` |
 | `--keep-chunks` | `false` |

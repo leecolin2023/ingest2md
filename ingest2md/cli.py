@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit-seconds", type=int, help="仅处理前 N 秒；0 为全片")
     parser.add_argument("--sensevoice-model-dir", help="本地 SenseVoiceSmall 模型目录；为空时首次使用自动下载")
     parser.add_argument("--sensevoice-chunk-seconds", type=int, help="SenseVoice WAV 切片秒数（5–30，默认 30）")
-    parser.add_argument("--sensevoice-batch-size", type=int, help="SenseVoice 批量推理大小（默认 4；可尝试 8 做本机 benchmark）")
+    parser.add_argument("--sensevoice-batch-size", type=int, help="SenseVoice 批量推理大小（默认 2；性能和内存充足时可尝试 4）")
     parser.add_argument("--openai-asr-base-url", help="OpenAI-compatible ASR API base URL")
     parser.add_argument("--openai-asr-api-key", help="OpenAI-compatible ASR API Key")
     parser.add_argument("--openai-asr-model", help="OpenAI-compatible ASR 模型")

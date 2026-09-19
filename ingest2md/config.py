@@ -19,7 +19,7 @@ class Settings:
     # Local SenseVoice ONNX.
     sensevoice_model_dir: str = ""
     sensevoice_chunk_seconds: int = 30
-    sensevoice_batch_size: int = 4
+    sensevoice_batch_size: int = 2
     sensevoice_quantize: bool = True
 
     # OpenAI-compatible /audio/transcriptions.

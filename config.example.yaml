@@ -9,7 +9,7 @@ subtitle_window_seconds: 300
 # SenseVoice ONNX. Leave model_dir empty to download iic/SenseVoiceSmall on first use.
 sensevoice_model_dir: ""
 sensevoice_chunk_seconds: 30
-sensevoice_batch_size: 4
+sensevoice_batch_size: 2
 sensevoice_quantize: true
 
 # Optional OpenAI-compatible /audio/transcriptions backend.

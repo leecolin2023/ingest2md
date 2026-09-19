@@ -396,7 +396,7 @@ def test_default_asr_backend_is_local_sensevoice():
     settings = Settings()
     assert settings.asr_backend == "sensevoice"
     assert settings.sensevoice_chunk_seconds == 30
-    assert settings.sensevoice_batch_size == 4
+    assert settings.sensevoice_batch_size == 2
     assert settings.openai_asr_api_key == ""
     assert settings.llm_api_key == ""
 
@@ -428,7 +428,7 @@ def test_sensevoice_backend_owns_wav_chunking(tmp_path: Path, monkeypatch):
     class FakeModel:
         def __init__(self, path, batch_size=1, quantize=True):
             called["model"] = True
-            assert batch_size == 4
+            assert batch_size == 2
         def __call__(self, paths, language="auto", use_itn=True):
             assert isinstance(paths, list)
             assert len(paths) == 1

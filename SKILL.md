@@ -53,10 +53,10 @@ ingest2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
 
 ## v0.8.3 本地 ASR 性能规则
 
-- SenseVoice 默认 `sensevoice_chunk_seconds=30`、`sensevoice_batch_size=4`；
+- SenseVoice 默认 `sensevoice_chunk_seconds=30`、`sensevoice_batch_size=2`；
 - SenseVoice 必须真正批量传入多个 WAV 文件，不能只把 `batch_size` 传给模型后仍逐片调用；
 - 音频切片使用一次 ffmpeg segment 完成，避免按 chunk 重复启动进程；
-- 可通过 `--sensevoice-batch-size 8` 做本机 benchmark，但不要假设 batch 越大一定越快；
+- 可通过 `--sensevoice-batch-size 4` 做本机 benchmark，但不要假设 batch 越大一定越快；
 - 性能日志应保留 preprocess / model setup / inference / total / RTF，便于后续基于实测优化。
 
 ## v0.8 音视频规则
