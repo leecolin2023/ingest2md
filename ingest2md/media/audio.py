@@ -36,9 +36,9 @@ def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    total = probe_duration(str(src))
-    if limit_seconds and limit_seconds < total:
-        total = float(limit_seconds)
+    source_total = probe_duration(str(src))
+    limited = bool(limit_seconds and limit_seconds < source_total)
+    total = float(limit_seconds) if limited else source_total
     if total <= 0.5:
         return []
 
@@ -55,7 +55,7 @@ def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
         _ffmpeg_bin("ffmpeg"), "-y", "-v", "error",
         "-i", str(src), "-vn",
     ]
-    if limit_seconds and limit_seconds < probe_duration(str(src)):
+    if limited:
         cmd.extend(["-t", str(total)])
     cmd.extend([
         *codec_args,
