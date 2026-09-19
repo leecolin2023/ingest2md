@@ -395,6 +395,8 @@ def test_document_adapter_delegates_to_markitdown(tmp_path: Path, monkeypatch):
 def test_default_asr_backend_is_local_sensevoice():
     settings = Settings()
     assert settings.asr_backend == "sensevoice"
+    assert settings.sensevoice_chunk_seconds == 30
+    assert settings.sensevoice_batch_size == 4
     assert settings.openai_asr_api_key == ""
     assert settings.llm_api_key == ""
 
@@ -418,15 +420,18 @@ def test_sensevoice_backend_owns_wav_chunking(tmp_path: Path, monkeypatch):
 
     def fake_chunks(audio, seconds, limit, out_dir):
         called["chunks"] = True
-        assert seconds == 20
+        assert seconds == 30
         chunk = tmp_path / "chunk.wav"
         chunk.write_bytes(b"fake")
-        return [{"path": str(chunk), "start": 0.0, "end": 20.0}]
+        return [{"path": str(chunk), "start": 0.0, "end": 30.0}]
 
     class FakeModel:
         def __init__(self, path, batch_size=1, quantize=True):
             called["model"] = True
+            assert batch_size == 4
         def __call__(self, paths, language="auto", use_itn=True):
+            assert isinstance(paths, list)
+            assert len(paths) == 1
             return ["<|zh|>本地转写"]
 
     monkeypatch.setattr(sv, "chunk_audio_wav", fake_chunks)
@@ -443,6 +448,95 @@ def test_sensevoice_backend_owns_wav_chunking(tmp_path: Path, monkeypatch):
     assert called == {"chunks": True, "model": True}
     assert result.segments[0].text == "本地转写"
     assert result.models == ["sensevoice-onnx:SenseVoiceSmall"]
+
+
+def test_sensevoice_true_batching_preserves_chunk_order(tmp_path: Path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import ingest2md.transcription.sensevoice as sv
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    chunks = []
+    for index in range(5):
+        path = tmp_path / f"chunk_{index:04d}.wav"
+        path.write_bytes(b"fake")
+        chunks.append({
+            "path": str(path),
+            "start": float(index * 30),
+            "end": float((index + 1) * 30),
+        })
+
+    monkeypatch.setattr(sv, "chunk_audio_wav", lambda *args, **kwargs: chunks)
+    calls = []
+
+    class FakeModel:
+        def __init__(self, path, batch_size=1, quantize=True):
+            assert batch_size == 2
+
+        def __call__(self, paths, language="auto", use_itn=True):
+            calls.append([Path(path).name for path in paths])
+            return [f"<|zh|>文本-{Path(path).stem}" for path in paths]
+
+    monkeypatch.setitem(sys.modules, "funasr_onnx", SimpleNamespace(SenseVoiceSmall=FakeModel))
+    monkeypatch.setitem(
+        sys.modules, "funasr_onnx.utils.postprocess_utils",
+        SimpleNamespace(rich_transcription_postprocess=lambda text: text.replace("<|zh|>", "")),
+    )
+
+    result = sv.SenseVoiceBackend().transcribe(
+        str(tmp_path / "audio.mp3"),
+        tmp_path,
+        Settings(
+            sensevoice_model_dir=str(model_dir),
+            sensevoice_chunk_seconds=30,
+            sensevoice_batch_size=2,
+        ),
+    )
+
+    assert [len(call) for call in calls] == [2, 2, 1]
+    assert [segment.text for segment in result.segments] == [
+        "文本-chunk_0000",
+        "文本-chunk_0001",
+        "文本-chunk_0002",
+        "文本-chunk_0003",
+        "文本-chunk_0004",
+    ]
+    assert [(segment.start, segment.end) for segment in result.segments] == [
+        (0.0, 30.0),
+        (30.0, 60.0),
+        (60.0, 90.0),
+        (90.0, 120.0),
+        (120.0, 150.0),
+    ]
+
+
+def test_audio_chunker_uses_one_ffmpeg_process(tmp_path: Path, monkeypatch):
+    import ingest2md.media.audio as audio
+
+    source = tmp_path / "source.m4a"
+    source.write_bytes(b"fake")
+    out_dir = tmp_path / "chunks"
+    calls = []
+
+    monkeypatch.setattr(audio, "probe_duration", lambda path: 65.0)
+    monkeypatch.setattr(audio, "_ffmpeg_bin", lambda name: name)
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        pattern = Path(cmd[-1])
+        pattern.parent.mkdir(parents=True, exist_ok=True)
+        for index in range(3):
+            Path(str(pattern).replace("%04d", f"{index:04d}")).write_bytes(b"fake")
+        return None
+
+    monkeypatch.setattr(audio.subprocess, "run", fake_run)
+    chunks = audio.chunk_audio_wav(str(source), 30, 0, out_dir)
+
+    assert len(calls) == 1
+    assert "-f" in calls[0] and "segment" in calls[0]
+    assert [item["start"] for item in chunks] == [0.0, 30.0, 60.0]
+    assert [item["end"] for item in chunks] == [30.0, 60.0, 65.0]
 
 
 def test_openai_asr_backend_owns_mp3_chunking(tmp_path: Path, monkeypatch):
