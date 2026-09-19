@@ -1,8 +1,10 @@
-"""Local-first SenseVoiceSmall ONNX backend adapted from the user's proven offline transcriber."""
+"""Local-first SenseVoiceSmall ONNX backend with batched CPU inference."""
 from __future__ import annotations
 
 import logging
+import math
 import re
+import time
 from pathlib import Path
 
 from ingest2md.config import Settings
@@ -70,23 +72,46 @@ def _clean_text(text: str, postprocess=None) -> str:
     return _TAG_RE.sub("", text).strip()
 
 
+def _batch_items(result, expected: int) -> list:
+    """Preserve one result per input path; never silently merge batch outputs."""
+    if expected == 1:
+        if isinstance(result, (list, tuple)) and len(result) == 1:
+            return [result[0]]
+        return [result]
+    if isinstance(result, (list, tuple)) and len(result) == expected:
+        return list(result)
+    raise RuntimeError(
+        f"SenseVoice 批量返回数量异常：输入 {expected} 段，返回 "
+        f"{len(result) if isinstance(result, (list, tuple)) else type(result).__name__}"
+    )
+
+
 class SenseVoiceBackend:
     name = "sensevoice"
 
     @staticmethod
-    def _run_model(model, audio_path: str, language: str, use_itn: bool = True):
+    def _run_model(model, audio_paths: list[str], language: str, use_itn: bool = True):
+        """Prefer true list input; retain single-file fallbacks for older runtimes."""
+        paths = list(audio_paths)
         attempts = [
-            lambda: model([audio_path], language=language, use_itn=use_itn),
-            lambda: model(audio_path, language=language, use_itn=use_itn),
+            lambda: model(paths, language=language, use_itn=use_itn),
         ]
         generate = getattr(model, "generate", None)
         if generate:
             attempts.extend([
-                lambda: generate(input=[audio_path], language=language, use_itn=use_itn),
-                lambda: generate(input=audio_path, language=language, use_itn=use_itn),
-                lambda: generate([audio_path], language=language, use_itn=use_itn),
-                lambda: generate(audio_path, language=language, use_itn=use_itn),
+                lambda: generate(input=paths, language=language, use_itn=use_itn),
+                lambda: generate(paths, language=language, use_itn=use_itn),
             ])
+        if len(paths) == 1:
+            path = paths[0]
+            attempts.extend([
+                lambda: model(path, language=language, use_itn=use_itn),
+            ])
+            if generate:
+                attempts.extend([
+                    lambda: generate(input=path, language=language, use_itn=use_itn),
+                    lambda: generate(path, language=language, use_itn=use_itn),
+                ])
         last_error = None
         for attempt in attempts:
             try:
@@ -98,39 +123,71 @@ class SenseVoiceBackend:
         raise RuntimeError("SenseVoiceSmall ONNX 调用失败")
 
     def transcribe(self, audio_path: str, work_dir: Path, settings: Settings) -> TranscriptResult:
+        total_started = time.perf_counter()
+
+        preprocess_started = time.perf_counter()
         chunks = chunk_audio_wav(
             audio_path,
             settings.sensevoice_chunk_seconds,
             settings.limit_seconds,
             work_dir / "chunks",
         )
+        preprocess_seconds = time.perf_counter() - preprocess_started
         if not chunks:
             raise ValueError("音频过短或没有可转写内容")
 
+        setup_started = time.perf_counter()
         model_dir = _resolve_model_dir(settings)
         SenseVoiceSmall, postprocess = _import_runtime()
         logger.info(
-            "加载本地 SenseVoiceSmall ONNX: %s (batch=%s, quantize=%s)",
-            model_dir, settings.sensevoice_batch_size, settings.sensevoice_quantize,
+            "加载本地 SenseVoiceSmall ONNX: %s (chunk=%ss, batch=%s, quantize=%s)",
+            model_dir, settings.sensevoice_chunk_seconds,
+            settings.sensevoice_batch_size, settings.sensevoice_quantize,
         )
         model = SenseVoiceSmall(
             str(model_dir),
             batch_size=settings.sensevoice_batch_size,
             quantize=settings.sensevoice_quantize,
         )
+        setup_seconds = time.perf_counter() - setup_started
 
+        batch_size = max(1, settings.sensevoice_batch_size)
+        batch_count = math.ceil(len(chunks) / batch_size)
         segments: list[Segment] = []
-        for index, chunk in enumerate(chunks, 1):
-            logger.info("SenseVoice 本地转写 [%s/%s]", index, len(chunks))
-            result = self._run_model(model, chunk["path"], settings.asr_language)
-            text = _clean_text(_extract_text(result), postprocess)
-            if text:
-                segments.append(Segment(chunk["start"], chunk["end"], text))
+
+        inference_started = time.perf_counter()
+        model_calls = 0
+        for batch_index, offset in enumerate(range(0, len(chunks), batch_size), 1):
+            batch = chunks[offset:offset + batch_size]
+            paths = [chunk["path"] for chunk in batch]
+            logger.info(
+                "SenseVoice 本地转写 batch [%s/%s] chunks %s-%s/%s",
+                batch_index, batch_count, offset + 1, offset + len(batch), len(chunks),
+            )
+            result = self._run_model(model, paths, settings.asr_language)
+            model_calls += 1
+            items = _batch_items(result, len(batch))
+            for chunk, item in zip(batch, items):
+                text = _clean_text(_extract_text(item), postprocess)
+                if text:
+                    segments.append(Segment(chunk["start"], chunk["end"], text))
+        inference_seconds = time.perf_counter() - inference_started
+
+        processed_seconds = chunks[-1]["end"]
+        total_seconds = time.perf_counter() - total_started
+        speed = processed_seconds / inference_seconds if inference_seconds > 0 else 0.0
+        rtf = inference_seconds / processed_seconds if processed_seconds > 0 else 0.0
+        logger.info(
+            "SenseVoice 性能 | 预处理 %.1fs | 模型准备 %.1fs | 推理 %.1fs | 总计 %.1fs | "
+            "音频 %.1fs | chunks=%s | batch=%s | model_calls=%s | %.1fx realtime | RTF=%.3f",
+            preprocess_seconds, setup_seconds, inference_seconds, total_seconds,
+            processed_seconds, len(chunks), batch_size, model_calls, speed, rtf,
+        )
 
         return TranscriptResult(
             segments=segments,
             models=["sensevoice-onnx:SenseVoiceSmall"],
-            processed_seconds=chunks[-1]["end"],
+            processed_seconds=processed_seconds,
             timestamp_precision="chunk",
             language=settings.asr_language,
         )

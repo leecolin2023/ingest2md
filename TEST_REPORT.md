@@ -1,13 +1,13 @@
-# ingest2md v0.8.2 Test Report
+# ingest2md v0.8.3 Test Report
 
-测试日期：2026-09-18
+测试日期：2026-09-19
 
 ## 结果
 
 GitHub Actions 在 Python 3.10 与 3.12 均通过：
 
 ```text
-32 passed
+34 passed
 ```
 
 执行链路：
@@ -19,48 +19,58 @@ python -m pytest -q
 ingest2md --help
 ```
 
-PR CI run：
+默认 batch 调整后的 PR CI run：
 
 ```text
-35332827238
+35413320927
 ```
 
-## v0.8.2 Maintenance cleanup
+## v0.8.3 SenseVoice 本地性能优化
 
-本版不新增产品能力，不改变用户可见行为，重点消除双重维护点：
+本版只优化本地 SenseVoice 路径，不改变字幕优先、ASR backend 选择或 Markdown 输出结构。
 
-1. 本地媒体与网络媒体统一复用 `retain_media()`，本地媒体通过 `retained_filename` 保持原来的 `source_media.<ext>` 命名；
-2. 新增共享 `parse_netscape_cookie_file()`，Playwright Cookie 与 YouTube Cookie 校验均基于同一 parser；
-3. Extractor registry 同时维护路由顺序与 Settings 注入；CLI 不再维护一份 Bilibili/YouTube/Xiaoyuzhou/LocalMedia/Zhihu/Xiaohongshu 类型名单；
-4. YouTube 的严格音频访问诊断改名为 `probe_playback_access()`，降低被误用到正常 ingestion 主链路的风险；
-5. Web/Zhihu/Xiaohongshu/Xiaoyuzhou/media downloader/Bilibili 统一使用 `DEFAULT_USER_AGENT`；
-6. Generic Web/Xiaohongshu/Xiaoyuzhou 的 HTML meta 读取统一到 `htmlutils.meta_content()`。
+1. SenseVoice 默认切片从 20 秒调整为 **30 秒**；
+2. 默认 `sensevoice_batch_size` 从 1 调整为 **2**，优先兼顾普通 8 GB 级 Windows 笔记本的稳定性；
+3. 推理改为真正的多文件 batch 调用，不再只是初始化模型时传入 batch_size 后仍逐片调用；
+4. 30 秒 WAV 切片改为单次 ffmpeg segment，避免按 chunk 重复启动进程；
+5. 新增 `--sensevoice-batch-size`，资源余量较大的机器可显式尝试 `4`；
+6. 增加 preprocess / model setup / inference / total / model_calls / realtime speed / RTF 性能日志；
+7. `local-asr` extra 增加 `onnxscript`，降低首次 ONNX 导出阶段缺依赖失败的概率。
+
+默认配置：
+
+```yaml
+sensevoice_chunk_seconds: 30
+sensevoice_batch_size: 2
+sensevoice_quantize: true
+```
 
 ## 新增回归
 
-新增 2 项针对维护风险的测试：
+在 v0.8.2 的 32 项基础上新增 2 项：
 
-- shared Netscape parser 同时驱动 Playwright Cookie 转换与 YouTube Cookie 校验，包括 `#HttpOnly_`；
-- registry 能在不依赖 CLI 类型判断的情况下向 YouTubeExtractor 注入同一个 Settings 对象。
+- 5 个 chunk、batch=2 时必须只调用模型 3 次（2 + 2 + 1），并保持 5 个 Segment 的文本与时间顺序不变；
+- SenseVoice WAV 分段必须通过单次 ffmpeg segment 调用完成。
 
-因此测试数从 v0.8.1 的 30 项增加为：
+因此当前：
 
 ```text
-32 passed
+34 passed
 ```
 
 ## 保持不动的边界
 
 本版刻意没有引入：
 
+- 音频/ASR 持久缓存；
+- GPU / CUDA 路径；
+- ONNX Runtime 线程调优；
 - VideoSubtitleMixin；
-- ASR backend 公共 chunk-loop 抽象；
-- generic provider headers 配置框架；
-- 对 v0.7 legacy config migration 的删除；
-- 对 subtitle wrapper / SenseVoice defensive calls / Document original_* 字段的清理。
+- ASR backend 公共 pipeline；
+- 对 OpenAI / LLM MP3 切片行为的改变。
 
-这些仍保留到确有维护收益时再处理，避免为了 DRY 引入更重抽象。
+其中 batch=4 仅作为更高资源机器的手动 benchmark 选项，不作为公共默认值。
 
 ## CI 边界
 
-基础 CI 仍不下载真实 YouTube/Bilibili 媒体，不下载 SenseVoiceSmall 模型，也不调用外部付费 API。当前测试验证的是路由、解析、backend 契约和此次 maintenance cleanup 的行为不变性。
+基础 CI 不下载真实 SenseVoiceSmall 模型，也不执行真实长音频性能 benchmark；当前测试验证 batch 契约、顺序保持、单进程 WAV segmentation 和既有功能回归。真实速度与内存占用仍需在目标机器上用同一段音频比较 batch=2 / 4。

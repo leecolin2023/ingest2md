@@ -29,6 +29,11 @@ def probe_duration(audio_path: str) -> float:
 
 def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
                  out_dir: str | Path, *, extension: str, codec_args: list[str]) -> list[dict]:
+    """Compatibility path: encode each chunk separately.
+
+    Cloud backends keep their existing behavior; the optimized single-process
+    segmentation below is intentionally limited to local SenseVoice WAV chunks.
+    """
     if chunk_seconds <= 0 or limit_seconds < 0:
         raise ValueError("切段时长必须大于零，处理时长不能为负数")
     src = Path(audio_path)
@@ -61,6 +66,59 @@ def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
     return chunks
 
 
+def _segment_audio_once(audio_path: str, chunk_seconds: int, limit_seconds: int,
+                        out_dir: str | Path, *, extension: str,
+                        codec_args: list[str]) -> list[dict]:
+    """Split local ASR audio with one ffmpeg process."""
+    if chunk_seconds <= 0 or limit_seconds < 0:
+        raise ValueError("切段时长必须大于零，处理时长不能为负数")
+    src = Path(audio_path)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    source_total = probe_duration(str(src))
+    limited = bool(limit_seconds and limit_seconds < source_total)
+    total = float(limit_seconds) if limited else source_total
+    if total <= 0.5:
+        return []
+
+    for stale in out_dir.glob(f"chunk_*.{extension}"):
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+    target_pattern = out_dir / f"chunk_%04d.{extension}"
+    cmd = [
+        _ffmpeg_bin("ffmpeg"), "-y", "-v", "error",
+        "-i", str(src), "-vn",
+    ]
+    if limited:
+        cmd.extend(["-t", str(total)])
+    cmd.extend([
+        *codec_args,
+        "-f", "segment",
+        "-segment_time", str(chunk_seconds),
+        "-reset_timestamps", "1",
+        str(target_pattern),
+    ])
+    subprocess.run(cmd, check=True, capture_output=True)
+
+    files = sorted(out_dir.glob(f"chunk_*.{extension}"))
+    chunks: list[dict] = []
+    for index, target in enumerate(files):
+        start = index * chunk_seconds
+        if start >= total - 0.5:
+            break
+        end = min(start + chunk_seconds, total)
+        chunks.append({
+            "path": str(target),
+            "start": round(float(start), 3),
+            "end": round(float(end), 3),
+        })
+    return chunks
+
+
 def chunk_audio_mp3(audio_path: str, chunk_seconds: int, limit_seconds: int,
                     out_dir: str | Path) -> list[dict]:
     """64kbps 16kHz mono MP3 for cloud / multimodal LLM upload."""
@@ -73,8 +131,8 @@ def chunk_audio_mp3(audio_path: str, chunk_seconds: int, limit_seconds: int,
 
 def chunk_audio_wav(audio_path: str, chunk_seconds: int, limit_seconds: int,
                     out_dir: str | Path) -> list[dict]:
-    """16kHz mono PCM WAV for SenseVoice ONNX."""
-    return _chunk_audio(
+    """16kHz mono PCM WAV for SenseVoice ONNX, segmented in one ffmpeg process."""
+    return _segment_audio_once(
         audio_path, chunk_seconds, limit_seconds, out_dir,
         extension="wav",
         codec_args=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"],

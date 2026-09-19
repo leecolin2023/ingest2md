@@ -12,6 +12,19 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.8.3：SenseVoice 本地性能优化
+
+本版只优化本地 SenseVoice 链路，不改变字幕优先、ASR backend 或 Markdown 输出结构：
+
+- SenseVoice 默认切片由 20 秒调整为 **30 秒**；
+- 默认批量推理由 batch=1 调整为 **batch=2**，并真正以文件列表批量调用模型；
+- 音频切片从“每段启动一次 ffmpeg”改为 **单次 ffmpeg segment**；
+- 新增 `--sensevoice-batch-size`，便于本机测试 batch=2 / 4；
+- 日志增加预处理、模型准备、推理、总耗时、model calls、realtime speed 与 RTF；
+- `local-asr` 补充 `onnxscript`，降低首次 ONNX 导出阶段缺依赖失败的概率。
+
+默认值选择更稳妥的 `30s / batch=2`；内存和 CPU 余量较大的机器可显式尝试 `batch=4`。
+
 ## v0.8.2：Maintenance cleanup
 
 本版不新增功能、不改变用户行为，只收敛容易产生双重维护的内部实现：
@@ -106,7 +119,7 @@ python -m camoufox fetch
 python -m pip install -e ".[local-asr]"
 ```
 
-`local-asr` 会安装 `funasr-onnx + onnxruntime + modelscope + funasr`。第一次真正使用 SenseVoice 时会自动下载/定位 `iic/SenseVoiceSmall`；如目录中尚无 ONNX，`funasr-onnx` 可借助 FunASR 完成首次导出。也可以通过 `sensevoice_model_dir` 指向已经准备好的本地 ONNX 模型目录。音视频 ASR 仍需要系统可用的 `ffmpeg` / `ffprobe`。
+`local-asr` 会安装 `funasr-onnx + onnxruntime + modelscope + funasr + onnxscript`。第一次真正使用 SenseVoice 时会自动下载/定位 `iic/SenseVoiceSmall`；如目录中尚无 ONNX，`funasr-onnx` 可借助 FunASR 完成首次导出。也可以通过 `sensevoice_model_dir` 指向已经准备好的本地 ONNX 模型目录。音视频 ASR 仍需要系统可用的 `ffmpeg` / `ffprobe`。
 
 YouTube 建议安装当前版 Deno 或 Node.js；遇到登录/机器人校验时提供 Cookie。
 
@@ -276,7 +289,7 @@ v0.8 不再让一个统一的 300 秒切片规则绑住所有 ASR。流程变成
 本地文件 / 已下载媒体
  ↓
 ASR backend
- ├─ sensevoice（默认）→ 约20秒 16k mono PCM WAV → SenseVoiceSmall ONNX
+ ├─ sensevoice（默认）→ 30秒 16k mono PCM WAV → batch=2 SenseVoiceSmall ONNX
  ├─ openai           → 较长 MP3 → /audio/transcriptions
  └─ llm              → MP3 → chat/responses + input_audio
  ↓
@@ -430,7 +443,8 @@ CLI 显式参数 > 对应环境变量 > config.yaml > 默认值
 | `--max-answers` | `0`，知乎尽可能多 |
 | `--asr-backend` | `sensevoice` |
 | `--asr-language` | `auto` |
-| `--sensevoice-chunk-seconds` | `20`（允许 5–30） |
+| `--sensevoice-chunk-seconds` | `30`（允许 5–30） |
+| `--sensevoice-batch-size` | `2`（内存和 CPU 余量较大时可尝试 `4`） |
 | `--limit-seconds` | `0`，完整媒体 |
 | `--keep-audio` | `false` |
 | `--keep-chunks` | `false` |
@@ -521,7 +535,7 @@ v0.8 当前在原有覆盖上新增 Local-first ASR 回归，重点覆盖：
 - YouTube 无字幕时 ASR fallback；
 - 默认 ASR backend 为 SenseVoice；
 - `sensevoice / openai / llm` 三种 backend 路由；
-- SenseVoice backend 自己生成 20 秒 WAV 切片；
+- SenseVoice backend 自己生成 30 秒 WAV 切片，并按 batch 批量推理；
 - OpenAI-compatible backend 自己生成 MP3 切片并调用 `/audio/transcriptions`；
 - 字幕路径保持原语言，不再调用 Translator；
 - v0.7 旧配置自动映射到新的 LLM backend 字段；
