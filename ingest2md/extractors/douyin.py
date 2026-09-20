@@ -47,12 +47,18 @@ class DouyinExtractor:
             if meta.get("cookie_header"):
                 headers["Cookie"] = meta["cookie_header"]
 
-            video_path = await asyncio.to_thread(
-                download_url,
-                meta["media_url"],
-                work / "video.mp4",
-                headers=headers,
-            )
+            try:
+                video_path = await asyncio.to_thread(
+                    download_url,
+                    meta["media_url"],
+                    work / "video.mp4",
+                    headers=headers,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    "已从抖音页面取得媒体地址，但视频下载失败；"
+                    "可尝试更新登录 Cookie，或下载视频后走本地媒体通道。"
+                ) from exc
             transcript = await asyncio.to_thread(
                 transcribe_audio,
                 str(video_path),
