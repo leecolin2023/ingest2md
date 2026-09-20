@@ -1,13 +1,13 @@
-# ingest2md v0.8.3 Test Report
+# ingest2md v0.8.4 Test Report
 
-测试日期：2026-09-19
+测试日期：2026-09-21
 
 ## 结果
 
 GitHub Actions 在 Python 3.10 与 3.12 均通过：
 
 ```text
-34 passed
+38 passed
 ```
 
 执行链路：
@@ -19,58 +19,53 @@ python -m pytest -q
 ingest2md --help
 ```
 
-默认 batch 调整后的 PR CI run：
+代码回归 CI run：
 
 ```text
-35413320927
+35545916051
 ```
 
-## v0.8.3 SenseVoice 本地性能优化
+## v0.8.4 Douyin browser acquisition
 
-本版只优化本地 SenseVoice 路径，不改变字幕优先、ASR backend 选择或 Markdown 输出结构。
+本版把抖音从 DeferredMediaExtractor 中拆出，新增轻量单视频采集能力：
 
-1. SenseVoice 默认切片从 20 秒调整为 **30 秒**；
-2. 默认 `sensevoice_batch_size` 从 1 调整为 **2**，优先兼顾普通 8 GB 级 Windows 笔记本的稳定性；
-3. 推理改为真正的多文件 batch 调用，不再只是初始化模型时传入 batch_size 后仍逐片调用；
-4. 30 秒 WAV 切片改为单次 ffmpeg segment，避免按 chunk 重复启动进程；
-5. 新增 `--sensevoice-batch-size`，资源余量较大的机器可显式尝试 `4`；
-6. 增加 preprocess / model setup / inference / total / model_calls / realtime speed / RTF 性能日志；
-7. `local-asr` extra 增加 `onnxscript`，降低首次 ONNX 导出阶段缺依赖失败的概率。
-
-默认配置：
-
-```yaml
-sensevoice_chunk_seconds: 30
-sensevoice_batch_size: 2
-sensevoice_quantize: true
-```
+1. `v.douyin.com` 分享短链和 Douyin URL 路由到 `DouyinExtractor`；
+2. Playwright 打开真实页面并跟随平台跳转；
+3. 仅消费 DOM 已暴露的 `video.currentSrc / video.src / source[src]` 直接 `http(s)` 媒体 URL；
+4. 可选读取 Netscape 格式 `douyin_cookies_file`；
+5. 下载时复用当前页面 Referer / Cookie，再交给已有 `transcribe_audio()`；
+6. 默认继续使用 SenseVoice 本地 ASR；
+7. 页面仅暴露 `blob:`、登录墙或没有直接媒体地址时明确失败并提示 Cookie / 本地文件 fallback；
+8. 微信视频号仍保持 deferred，不掉入 Generic Web。
 
 ## 新增回归
 
-在 v0.8.2 的 32 项基础上新增 2 项：
+在 v0.8.3 的 34 项基础上新增 4 项：
 
-- 5 个 chunk、batch=2 时必须只调用模型 3 次（2 + 2 + 1），并保持 5 个 Segment 的文本与时间顺序不变；
-- SenseVoice WAV 分段必须通过单次 ffmpeg segment 调用完成。
+- 抖音分享短链必须路由到 `DouyinExtractor`，不再进入 DeferredMediaExtractor；
+- DOM snapshot 遇到 `blob:` 时能够跳过，并选择可直接下载的 http(s) source；
+- DouyinExtractor 能把浏览器解析出的媒体 URL、Referer、Cookie 交给下载器并复用共享 ASR；
+- `douyin_cookies_file` 能按 config.yaml 所在目录解析相对路径。
 
 因此当前：
 
 ```text
-34 passed
+38 passed
 ```
 
-## 保持不动的边界
+## 明确保留的边界
 
-本版刻意没有引入：
+本版没有实现：
 
-- 音频/ASR 持久缓存；
-- GPU / CUDA 路径；
-- ONNX Runtime 线程调优；
-- VideoSubtitleMixin；
-- ASR backend 公共 pipeline；
-- 对 OpenAI / LLM MP3 切片行为的改变。
+- `a_bogus` / `X-Bogus` 或其他私有签名算法；
+- Douyin 私有 detail API client；
+- DouK/TikTokDownloader Sidecar；
+- 主页批量、合集、评论、直播；
+- 无水印保证；
+- Playwright network interception / blob 解码 fallback。
 
-其中 batch=4 仅作为更高资源机器的手动 benchmark 选项，不作为公共默认值。
+这些能力只有在 DOM 轻量方案真实使用成功率不足、且收益明确时再考虑。
 
 ## CI 边界
 
-基础 CI 不下载真实 SenseVoiceSmall 模型，也不执行真实长音频性能 benchmark；当前测试验证 batch 契约、顺序保持、单进程 WAV segmentation 和既有功能回归。真实速度与内存占用仍需在目标机器上用同一段音频比较 batch=2 / 4。
+基础 CI 不真正启动 Playwright 访问抖音，也不下载真实抖音媒体或 SenseVoice 模型。当前测试验证路由、DOM snapshot 选择、Cookie/Referer 传递、ASR pipeline 接续与既有功能回归。真实抖音可用率仍需用公开分享链接做端到端 smoke test。
