@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ingest2md"
-version = "0.8.3"
+version = "0.8.4"
 description = "Source-aware content ingestion for AI/agents: turn web, media and documents into portable Markdown."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -8,13 +8,17 @@ import httpx
 from ingest2md.netutils import DEFAULT_USER_AGENT
 
 
-def download_url(url: str, target: Path, *, max_bytes: int = 750 * 1024 * 1024) -> Path:
+def download_url(url: str, target: Path, *, max_bytes: int = 750 * 1024 * 1024,
+                 headers: dict[str, str] | None = None) -> Path:
     """Stream one public media file to ``target`` with a conservative size cap."""
     target.parent.mkdir(parents=True, exist_ok=True)
     written = 0
+    request_headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"}
+    if headers:
+        request_headers.update(headers)
     try:
         with httpx.Client(
-            headers={"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"},
+            headers=request_headers,
             follow_redirects=True,
             timeout=httpx.Timeout(30.0, read=120.0),
         ) as client:
