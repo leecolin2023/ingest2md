@@ -66,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bilibili-cookies-file", help="B站专用 Netscape Cookie 文件")
     parser.add_argument("--zhihu-cookies-file", help="知乎专用 Netscape Cookie 文件")
     parser.add_argument("--xiaohongshu-cookies-file", help="小红书专用 Netscape Cookie 文件")
+    parser.add_argument("--douyin-cookies-file", help="抖音专用 Netscape Cookie 文件（可选）")
 
     parser.add_argument("--max-answers", type=int,
                         help="知乎最多抓取 N 个回答；0/不设置表示尽可能多")
@@ -127,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             bilibili_cookies_file=args.bilibili_cookies_file,
             zhihu_cookies_file=args.zhihu_cookies_file,
             xiaohongshu_cookies_file=args.xiaohongshu_cookies_file,
+            douyin_cookies_file=args.douyin_cookies_file,
             max_answers=args.max_answers,
             formats=args.formats,
             keep_audio=args.keep_audio,

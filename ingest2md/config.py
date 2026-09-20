@@ -43,6 +43,7 @@ class Settings:
     bilibili_cookies_file: str = ""
     zhihu_cookies_file: str = ""
     xiaohongshu_cookies_file: str = ""
+    douyin_cookies_file: str = ""
     max_answers: int = 0
     output_dir: str = "output"
     formats: tuple[str, ...] = ("md",)
@@ -88,7 +89,7 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
 
     for key in (
         "cookies_file", "youtube_cookies_file", "bilibili_cookies_file",
-        "zhihu_cookies_file", "xiaohongshu_cookies_file", "output_dir",
+        "zhihu_cookies_file", "xiaohongshu_cookies_file", "douyin_cookies_file", "output_dir",
         "sensevoice_model_dir",
     ):
         if data.get(key):
@@ -155,7 +156,7 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
         "openai_asr_base_url", "openai_asr_api_key", "openai_asr_model", "asr_prompt",
         "llm_base_url", "llm_api_key", "llm_model", "llm_api",
         "cookies_file", "youtube_cookies_file", "bilibili_cookies_file",
-        "zhihu_cookies_file", "xiaohongshu_cookies_file", "output_dir",
+        "zhihu_cookies_file", "xiaohongshu_cookies_file", "douyin_cookies_file", "output_dir",
     ):
         if not isinstance(getattr(settings, key), str):
             raise ValueError(f"{key} 必须是字符串")

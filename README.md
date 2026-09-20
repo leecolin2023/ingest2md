@@ -12,6 +12,18 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.8.4：抖音单视频浏览器采集
+
+本版把抖音从“仅识别”升级为轻量可用的单视频 Adapter，但仍不维护私有签名：
+
+- 支持 `v.douyin.com` 分享短链和 `douyin.com` 单视频页面；
+- 使用现有 Playwright 打开真实页面并执行平台自身 JavaScript；
+- 只读取 DOM 中已经暴露的 `video.currentSrc / video.src / source[src]` 直接 `http(s)` 媒体地址；
+- 可选加载 Netscape 格式抖音 Cookie；
+- 下载视频后直接复用现有 ASR backend，默认 SenseVoice 本地转写；
+- 如果页面只暴露 `blob:`、登录墙或没有直接媒体地址，会明确提示 Cookie / 本地文件 fallback；
+- 不实现 `a_bogus` / `X-Bogus`、私有 API、DouK Sidecar、主页/合集/评论/直播或“无水印”保证。
+
 ## v0.8.3：SenseVoice 本地性能优化
 
 本版只优化本地 SenseVoice 链路，不改变字幕优先、ASR backend 或 Markdown 输出结构：
@@ -71,7 +83,7 @@ v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认�
 1. **小宇宙 Podcast**：单集页面 → 节目简介 / Show Notes → 公开音频 → 原语言转写 → 中文翻译 → 一个 Markdown。
 2. **本地音视频**：支持常见音频、视频文件直接进入现有转写链路。
 3. **Content Reference 输入**：CLI 输入从单纯 URL 扩展为 URL、App 分享文案中的 URL、本地文件、B站 BV 号。
-4. **抖音 / 微信视频号明确拦截**：能识别来源，但当前不做不稳定的自动媒体下载；不会再掉进 Generic Web 假装抓取成功。
+4. **抖音 / 微信视频号明确识别**：v0.6 起不会掉进 Generic Web；v0.8.4 抖音单视频已升级为浏览器轻量采集，视频号仍保持 deferred。
 
 ## 支持内容
 
@@ -85,7 +97,7 @@ v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认�
 | **小宇宙** | **✅ v0.6** | Show Notes + 播客转写 | 单个 Markdown |
 | **本地音视频** | **✅ v0.8 Local-first** | 本地媒体 → 默认 SenseVoice 本地转写 → 原语言 | 单个 Markdown |
 | 普通网页 | ✅ | 主要正文 | 单个 Markdown |
-| 抖音 | ⏸ | 自动识别；媒体下载暂缓 | 明确提示改走本地文件 |
+| 抖音 | ✅ 轻量 | 单视频/分享短链 → 浏览器 DOM 媒体地址 → ASR | 单个 Markdown |
 | 微信视频号 | ⏸ | 自动识别；媒体下载暂缓 | 明确提示改走本地文件 |
 
 知乎问题 URL 和某个回答 URL 都会按“问题导向”处理：定位到所属问题，把当前可获取的回答尽量收进同一个 Markdown。
@@ -193,6 +205,9 @@ ingest2md "https://www.xiaohongshu.com/explore/xxxx" -o archive
 # 普通网页
 ingest2md "https://example.com/article" -o archive
 
+# 抖音单视频 / 分享短链
+ingest2md "https://v.douyin.com/xxxx/" -o archive
+
 # B站 / YouTube：有字幕直接使用；无字幕默认本地 SenseVoice
 # Bilibili 仍按平台字幕优先处理
 
@@ -203,29 +218,59 @@ ingest2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e" -o arc
 ingest2md "./meeting.mp3" -o archive
 ```
 
-## 抖音与微信视频号：识别，但暂不自动下载
+## 抖音单视频：浏览器 DOM 轻量采集
 
-v0.6 会在 Generic Web 之前识别这些链接，例如：
+支持：
 
 ```text
-v.douyin.com
-douyin.com
+v.douyin.com/<share>
+douyin.com/video/<id>
+整段抖音分享文案中的第一条 URL
+```
+
+默认流程：
+
+```text
+分享文案 / 抖音 URL
+ ↓
+Router → DouyinExtractor
+ ↓
+Playwright 打开真实页面并跟随短链跳转
+ ↓
+读取 video.currentSrc / video.src / source[src]
+ ↓
+得到直接 http(s) 媒体地址
+ ↓
+带 Referer / 当前浏览器 Cookie 下载视频
+ ↓
+复用 transcribe_audio()
+ ↓
+Markdown
+```
+
+匿名公开页面优先直接尝试；如果页面需要登录，可提供：
+
+```bash
+ingest2md "<抖音URL>" --douyin-cookies-file douyin-cookies.txt
+```
+
+第一版故意只处理页面已经暴露的直接媒体 URL。如果页面只提供 `blob:`、登录墙或没有可下载地址，会明确失败并建议：
+
+1. 更新/提供抖音登录 Cookie；
+2. 或手动下载视频后执行 `ingest2md "/path/to/douyin.mp4"`。
+
+项目**不实现** `a_bogus` / `X-Bogus`、私有 API 签名、DouK Sidecar、主页批量、合集、评论、直播或无水印承诺。
+
+## 微信视频号：仍只识别来源
+
+视频号仍在 Generic Web 前被识别，但当前不自动获取媒体：
+
+```text
 weixin.qq.com/sph/
 channels.weixin.qq.com
 ```
 
-程序会明确返回：
-
-```text
-已识别来源：抖音视频
-当前版本暂未接入稳定的媒体获取方式。
-建议下载视频后执行：
-ingest2md "/path/to/douyin.mp4"
-```
-
-视频号同理。
-
-这样可以避免“网页抓到一点壳内容，就生成一个看似成功但没有价值的 Markdown”。如果之后能找到无需长期维护签名、登录服务或 Sidecar 的稳定公开入口，再把媒体获取接进来。
+程序会明确提示下载视频后走本地媒体通道，不会生成一个只有页面壳的 Markdown。
 
 ## 小宇宙处理方式
 
@@ -370,9 +415,9 @@ ingest2md "./video.mp4" --keep-audio --keep-chunks
 Generic Web 永远排在更具体的平台之后。当前路由优先级大致为：
 
 ```text
-已识别但暂缓的平台
+已识别但暂缓的平台（视频号）
 → 本地媒体
-→ 微信 / B站 / YouTube / 小宇宙 / 知乎 / 小红书
+→ 抖音 / 微信 / B站 / YouTube / 小宇宙 / 知乎 / 小红书
 → Generic Web
 ```
 
@@ -424,6 +469,7 @@ Cookie 统一使用 Netscape 格式：
 ingest2md "<知乎URL>" --zhihu-cookies-file zhihu-cookies.txt
 ingest2md "<小红书URL>" --xiaohongshu-cookies-file xhs-cookies.txt
 ingest2md "<YouTubeURL>" --youtube-cookies-file youtube-cookies.txt
+ingest2md "<抖音URL>" --douyin-cookies-file douyin-cookies.txt
 ```
 
 ## 配置
@@ -462,7 +508,8 @@ ingest2md/
 ├── htmlutils.py
 ├── extractors/
 │   ├── base.py
-│   ├── deferred_media.py      # NEW: 抖音/视频号识别但暂缓
+│   ├── deferred_media.py      # 微信视频号识别但暂缓
+│   ├── douyin.py              # 抖音单视频浏览器采集
 │   ├── local_media.py         # NEW
 │   ├── xiaoyuzhou.py          # NEW
 │   ├── wechat.py
@@ -476,7 +523,8 @@ ingest2md/
 │   ├── audio.py
 │   ├── bilibili.py
 │   ├── youtube.py
-│   └── download.py            # NEW: 通用 HTTP 流式下载
+│   ├── douyin.py              # 抖音 DOM 媒体解析
+│   └── download.py            # 通用 HTTP 流式下载
 └── transcription/
     ├── service.py              # 只负责选择 backend
     ├── sensevoice.py           # 默认本地 SenseVoice ONNX
@@ -523,7 +571,7 @@ v0.8 当前在原有覆盖上新增 Local-first ASR 回归，重点覆盖：
 - 分享文案提取第一条 URL；
 - 普通 URL 与 BV 号兼容；
 - 本地媒体存在/不存在路径判定；
-- 抖音、微信视频号在 Generic Web 前被拦截；
+- 抖音分享链接在 Generic Web 前进入 DouyinExtractor；微信视频号仍被 deferred；
 - 小宇宙路由、`__NEXT_DATA__`、`og:audio` 回退；
 - 小宇宙调用现有 `transcribe_audio()`；
 - 默认只输出 Markdown；
@@ -550,7 +598,8 @@ v0.8 当前在原有覆盖上新增 Local-first ASR 回归，重点覆盖：
 
 - 知乎、小红书可能因登录态、反爬、页面结构调整而少抓或失败；项目目标是“快速可用”，不是保证全量。
 - 小宇宙依赖公开 episode 页面中可取得的音频 URL；如果平台未来移除公开 `__NEXT_DATA__` / `og:audio` / CDN 地址，需要调整解析器。
-- 抖音、视频号当前只识别来源，不维护私有签名、复杂登录、解密或专用 Sidecar。
+- 抖音当前只支持单条公开视频/分享短链的浏览器 DOM 采集；如果页面只暴露 blob、登录墙或不提供直接媒体 URL，会失败并提示 Cookie/本地文件 fallback。项目不维护私有签名、复杂解密或专用 Sidecar。
+- 微信视频号仍只识别来源，不自动获取媒体。
 - 本地媒体必须是实际存在的文件；不存在的“路径字符串”不会进入本地媒体通道。
 - 普通网页以 Trafilatura 为主，但复杂交互网站仍可能需要浏览器 fallback，且不承诺等同专业 crawler。
 - PDF/DOCX/PPTX/XLSX 由 MarkItDown 提供实际转换能力，需要安装 `ingest2md[documents]`；ingest2md 本身不实现文档解析。

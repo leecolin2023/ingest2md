@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ingest2md.extractors.base import Extractor
 from ingest2md.extractors.deferred_media import DeferredMediaExtractor
+from ingest2md.extractors.douyin import DouyinExtractor
 from ingest2md.extractors.local_media import LocalMediaExtractor
 from ingest2md.extractors.document import DocumentExtractor
 from ingest2md.extractors.bilibili import BilibiliExtractor
@@ -16,6 +17,7 @@ from ingest2md.extractors.web import GenericWebExtractor
 # One registry owns both ordering and Settings injection.
 _BUILTIN_EXTRACTORS = [
     (DeferredMediaExtractor, False),
+    (DouyinExtractor, True),
     (LocalMediaExtractor, True),
     (DocumentExtractor, False),
     (WeChatExtractor, False),

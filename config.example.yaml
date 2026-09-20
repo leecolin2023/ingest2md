@@ -1,4 +1,4 @@
-# ingest2md v0.8.3 example configuration
+# ingest2md v0.8.4 example configuration
 
 # Local-first transcription. No paid API is required for the default path.
 asr_backend: "sensevoice"       # sensevoice | openai | llm
@@ -40,3 +40,4 @@ youtube_cookies_file: ""
 bilibili_cookies_file: ""
 zhihu_cookies_file: ""
 xiaohongshu_cookies_file: ""
+douyin_cookies_file: ""

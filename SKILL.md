@@ -1,6 +1,6 @@
 ---
 name: ingest2md
-description: 把网页链接、App 分享文案和本地音视频转换为本地、可直接阅读并可批量交给 LLM 的 Markdown 语料。支持微信公众号、知乎、小红书、Bilibili、YouTube、小宇宙、普通网页、本地音视频和可选 PDF/Office 文档；抖音/视频号可识别但暂不自动获取媒体。
+description: 把网页链接、App 分享文案和本地音视频转换为本地、可直接阅读并可批量交给 LLM 的 Markdown 语料。支持微信公众号、知乎、小红书、Bilibili、YouTube、小宇宙、抖音单视频、普通网页、本地音视频和可选 PDF/Office 文档；微信视频号可识别但暂不自动获取媒体。
 ---
 
 # ingest2md — Content Reference → LLM Markdown Corpus
@@ -17,6 +17,7 @@ description: 把网页链接、App 分享文案和本地音视频转换为本地
 - Bilibili 单视频/分P或 BV 号；
 - YouTube 单视频；
 - 小宇宙单集；
+- 抖音单视频 / 分享短链；
 - 普通 http/https 网页；
 - App 分享文案：自动取其中第一条 http(s) URL；
 - 本地 MP3/M4A/WAV/AAC/FLAC/OGG/OPUS；
@@ -47,6 +48,7 @@ ingest2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
 - 小红书：正文 + 当前可取得的笔记图片；默认不跑 OCR/Vision。
 - B站/YouTube：优先使用平台人工/自动字幕；有字幕直接保留原语言，没有字幕才进入 ASR。
 - 小宇宙：节目简介 / Show Notes + 公开音频转写；默认使用本地 SenseVoice，保留原语言。
+- 抖音：用现有 Playwright 打开单视频/分享短链，只读取 DOM 已暴露的直接 http(s) 媒体地址，再复用现有 ASR；不实现私有签名。
 - 本地音视频：默认 `SenseVoiceBackend` 本地转写；也可显式选择 OpenAI-compatible ASR 或多模态 LLM audio。Backend 自己决定切片格式与时长。
 - 普通网页：HTTP 获取后优先用 Trafilatura 提取正文，必要时才用浏览器 fallback。
 - PDF/DOCX/PPTX/XLSX：交给可选的 Microsoft MarkItDown Adapter，不自行实现文档解析。
@@ -79,33 +81,39 @@ ingest2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
 
 不要因为字符串以 `.mp4` / `.mp3` 结尾，就假定它是本地文件；文件必须真实存在。
 
-## 已识别但未稳定支持的平台
+## 抖音规则
 
-对抖音和微信视频号，不要让 Generic Web 假装抓取成功。
-
-如果识别到：
+抖音单视频已进入轻量支持范围：
 
 ```text
-v.douyin.com
-douyin.com
+分享文案 / v.douyin.com / douyin.com/video/...
+↓
+Playwright 渲染真实页面
+↓
+video.currentSrc / video.src / source[src]
+↓
+直接 http(s) 媒体
+↓
+现有 transcribe_audio()
+```
+
+约束：
+
+- 匿名访问优先，必要时允许 `--douyin-cookies-file`；
+- 页面只暴露 `blob:`、登录墙或无直接媒体地址时必须明确失败；
+- 失败后提示更新 Cookie 或下载后走本地媒体通道；
+- 不自行实现 `a_bogus` / `X-Bogus`、私有 API、Sidecar、主页/合集/评论/直播。
+
+## 已识别但未稳定支持的平台
+
+微信视频号仍不得让 Generic Web 假装抓取成功。识别到：
+
+```text
 weixin.qq.com/sph/
 channels.weixin.qq.com
 ```
 
-应明确提示：
-
-```text
-已识别来源：抖音视频
-当前版本暂未接入稳定的媒体获取方式。
-建议下载视频后执行：
-ingest2md "/path/to/douyin.mp4"
-```
-
-视频号同理。
-
-核心原则：
-
-> 能以轻量、稳定方式接入的就接；需要维护私有签名、特殊登录服务、解密链路、专用 Sidecar 的来源先不做。
+应明确提示下载视频后走本地媒体通道。
 
 ## 小宇宙规则
 
@@ -148,6 +156,7 @@ Cookie 使用 Netscape 格式：
 ingest2md "<知乎URL>" --zhihu-cookies-file zhihu-cookies.txt
 ingest2md "<小红书URL>" --xiaohongshu-cookies-file xhs-cookies.txt
 ingest2md "<YouTubeURL>" --youtube-cookies-file youtube-cookies.txt
+ingest2md "<抖音URL>" --douyin-cookies-file douyin-cookies.txt
 ```
 
 ## 路由解释
@@ -177,5 +186,5 @@ ingest2md "<Content Reference>" --explain
 - 小宇宙与本地媒体都复用 `transcribe_audio()`；ASR backend 自己负责切片，不新增 MediaProviderManager / Resolver Registry。
 - 不把采集阶段变成总结阶段：默认尽量保留正文，后续分析交给 LLM。
 - 对不稳定网站，优先返回可读的部分结果/清晰错误，不建设重型审计产物。
-- 已识别但未稳定支持的平台必须明确失败，不得悄悄降级成 Generic Web。
+- 微信视频号等 deferred 平台必须明确失败，不得悄悄降级成 Generic Web；抖音只在浏览器取得直接媒体 URL 时继续。
 - 详细安装、配置、边界见 `README.md`。
