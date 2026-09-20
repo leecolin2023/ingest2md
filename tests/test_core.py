@@ -617,3 +617,103 @@ def test_registry_injects_settings_without_cli_type_list():
     extractors = get_extractors(settings)
     youtube = next(item for item in extractors if isinstance(item, YouTubeExtractor))
     assert youtube.settings is settings
+
+
+def test_douyin_routes_before_deferred_media():
+    from ingest2md.extractors.douyin import DouyinExtractor
+    from ingest2md.extractors.deferred_media import DeferredMediaExtractor
+
+    extractor = find_extractor("https://v.douyin.com/abc123/")
+    assert isinstance(extractor, DouyinExtractor)
+    assert not isinstance(extractor, DeferredMediaExtractor)
+
+
+def test_douyin_snapshot_skips_blob_and_keeps_direct_media():
+    from ingest2md.media.douyin import normalize_page_snapshot
+
+    meta = normalize_page_snapshot({
+        "current_src": "blob:https://www.douyin.com/temporary",
+        "src": "",
+        "sources": ["https://v26-web.douyinvod.com/demo/video.mp4"],
+        "title": "Demo Video",
+        "author": "Demo Author",
+        "description": "Demo Description",
+        "canonical_url": "https://www.douyin.com/video/1234567890",
+    }, "https://www.douyin.com/video/1234567890")
+
+    assert meta["media_url"] == "https://v26-web.douyinvod.com/demo/video.mp4"
+    assert meta["saw_blob"] is True
+    assert meta["video_id"] == "1234567890"
+    assert meta["title"] == "Demo Video"
+    assert meta["author"] == "Demo Author"
+
+
+def test_douyin_extractor_reuses_browser_media_and_shared_asr(tmp_path: Path, monkeypatch):
+    import ingest2md.extractors.douyin as douyin
+    from ingest2md.transcription.model import Segment, TranscriptResult
+
+    async def fake_resolve(url, cookies_file=""):
+        assert url == "https://v.douyin.com/demo/"
+        assert cookies_file.endswith("douyin.txt")
+        return {
+            "video_id": "1234567890",
+            "title": "抖音测试视频",
+            "author": "测试作者",
+            "description": "测试简介",
+            "canonical_url": "https://www.douyin.com/video/1234567890",
+            "media_url": "https://v26-web.douyinvod.com/demo/video.mp4",
+            "cookie_header": "sessionid=abc",
+        }
+
+    called = {"download": False, "asr": False, "headers": None}
+
+    def fake_download(url, target, **kwargs):
+        called["download"] = True
+        called["headers"] = kwargs.get("headers")
+        target.write_bytes(b"fake-video")
+        return target
+
+    def fake_transcribe(path, work, settings):
+        called["asr"] = True
+        return TranscriptResult(
+            [Segment(0, 30, "测试转写")],
+            ["mock-asr"],
+            30,
+            language="zh",
+        )
+
+    monkeypatch.setattr(douyin.source, "resolve_video_page", fake_resolve)
+    monkeypatch.setattr(douyin, "download_url", fake_download)
+    monkeypatch.setattr(douyin, "transcribe_audio", fake_transcribe)
+    monkeypatch.setattr(douyin, "retain_media", lambda *args, **kwargs: None)
+
+    cookie_file = tmp_path / "douyin.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+    settings = Settings(
+        output_dir=str(tmp_path),
+        douyin_cookies_file=str(cookie_file),
+    )
+    doc = asyncio.run(douyin.DouyinExtractor(settings).extract(
+        "https://v.douyin.com/demo/", tmp_path
+    ))
+
+    assert called["download"] is True
+    assert called["asr"] is True
+    assert called["headers"]["Referer"] == "https://www.douyin.com/video/1234567890"
+    assert called["headers"]["Cookie"] == "sessionid=abc"
+    assert doc.source_type == "douyin"
+    assert doc.source_id == "1234567890"
+    assert doc.title == "抖音测试视频"
+    assert "## 视频简介" in doc.body_md
+    assert "测试简介" in doc.body_md
+    assert "## 转写正文" in doc.body_md
+    assert "测试转写" in doc.body_md
+
+
+def test_douyin_cookie_setting_is_loaded_relative_to_config(tmp_path: Path):
+    from ingest2md.config import load_settings
+
+    config = tmp_path / "config.yaml"
+    config.write_text('douyin_cookies_file: "douyin.txt"\n', encoding="utf-8")
+    settings = load_settings(str(config))
+    assert settings.douyin_cookies_file == str(tmp_path / "douyin.txt")
