@@ -80,10 +80,10 @@ def test_nonexistent_media_path_is_not_local(tmp_path: Path, monkeypatch):
 
 
 def test_douyin_is_intercepted_before_generic():
+    from ingest2md.extractors.douyin import DouyinExtractor
+
     extractor = find_extractor(normalize_reference(SHARE_TEXT))
-    assert isinstance(extractor, DeferredMediaExtractor)
-    with pytest.raises(SourceUnavailableError, match="抖音视频"):
-        asyncio.run(extractor.extract("https://v.douyin.com/akR8LCIaTMI/", Path(".")))
+    assert isinstance(extractor, DouyinExtractor)
 
 
 def test_weixin_channel_is_intercepted():
