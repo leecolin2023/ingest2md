@@ -28,8 +28,9 @@ class YouTubeExtractor:
         "使用配置 ASR backend（默认 SenseVoice ONNX 本地）",
     )
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, runtime=None):
         self.settings = settings
+        self.runtime = runtime
 
     def match(self, url: str) -> bool:
         return host_of(url) in source.HOSTS
@@ -70,7 +71,7 @@ class YouTubeExtractor:
             else:
                 logger.info("未取得可用字幕；此时才下载 YouTube 音频并使用 %s ASR", settings.asr_backend)
                 meta, audio_path = source.download_video(url, work, cookies_file)
-                transcript = transcribe_audio(audio_path, work, settings)
+                transcript = transcribe_audio(audio_path, work, settings, backend=self.runtime.asr_backend if self.runtime else None)
                 acquisition = f"音频下载 + {settings.asr_backend} ASR fallback"
 
             doc = Document(
