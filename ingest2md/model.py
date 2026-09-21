@@ -51,8 +51,10 @@ class Document:
         if self.source_id:
             return f"{title}__{sanitize_filename(self.source_id)}"
         if self.source_type:
-            stable = self.canonical_key or self.source_url
-            return f"{title}__{_short_artifact_key(stable)}"
+            # Artifact naming must stay stable even if batch canonical identity is
+            # refined after extraction. Some adapters localize assets before the
+            # engine performs the final identity check.
+            return f"{title}__{_short_artifact_key(self.source_url)}"
         return title
 
     def build_markdown(self) -> str:
