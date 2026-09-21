@@ -16,12 +16,13 @@ from bs4 import BeautifulSoup
 from ingest2md.config import Settings, load_settings
 from ingest2md.extractors.video import retain_media
 from ingest2md.htmlutils import clean_fragment, meta_content, text_of_html
+from ingest2md.identity import SourceIdentity
 from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.media.audio import probe_media_info
 from ingest2md.media.download import download_url
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
-from ingest2md.transcription.writers import render_chaptered_markdown, render_markdown
+from ingest2md.transcription.presentation import present_transcript
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,11 @@ class XiaoyuzhouExtractor:
     def match(self, url: str) -> bool:
         return host_of(url) in _HOSTS and bool(_EPISODE_RE.search(urlparse(url).path))
 
+    async def identity(self, url: str) -> SourceIdentity:
+        match = _EPISODE_RE.search(urlparse(url).path)
+        episode_id = match.group(1) if match else ""
+        return SourceIdentity(f"xiaoyuzhou:{episode_id}", "xiaoyuzhou", episode_id)
+
     async def extract(self, url: str, output_dir: Path) -> Document:
         return await asyncio.to_thread(self._extract, url, output_dir)
 
@@ -58,9 +64,27 @@ class XiaoyuzhouExtractor:
         with tempfile.TemporaryDirectory(prefix="ingest2md-xiaoyuzhou-") as temp:
             work = Path(temp)
             suffix = _audio_suffix(meta["audio_url"])
-            audio_path = download_url(meta["audio_url"], work / f"audio{suffix}")
-            audio_info = probe_media_info(str(audio_path))
-            _validate_episode_audio(audio_info, int(meta["duration"] or 0))
+            cache_key = f"xiaoyuzhou:{meta['episode_id']}"
+            cache = (
+                self.runtime.media_cache
+                if self.runtime is not None and settings.media_cache_enabled
+                else None
+            )
+            audio_path = cache.get(cache_key) if cache is not None else None
+            if audio_path is not None:
+                try:
+                    audio_info = probe_media_info(str(audio_path))
+                    _validate_episode_audio(audio_info, int(meta["duration"] or 0))
+                    logger.info("小宇宙：复用上次失败任务留下的媒体缓存")
+                except Exception:
+                    cache.discard(cache_key)
+                    audio_path = None
+            if audio_path is None:
+                audio_path = download_url(meta["audio_url"], work / f"audio{suffix}")
+                audio_info = probe_media_info(str(audio_path))
+                _validate_episode_audio(audio_info, int(meta["duration"] or 0))
+                if cache is not None:
+                    audio_path = cache.store(cache_key, audio_path)
             transcript = (
                     transcribe_audio(str(audio_path), work, settings, backend=self.runtime.asr_backend)
                     if self.runtime is not None
@@ -95,17 +119,10 @@ class XiaoyuzhouExtractor:
                 # Keep the stable section name even for episodes that only expose a description.
                 body_parts.append("## Show Notes\n\n" + description)
             chapters = parse_shownote_chapters(shownotes)
-            transcript_md = (
-                render_chaptered_markdown(
-                    transcript,
-                    chapters,
-                    window_seconds=settings.transcript_window_seconds,
-                )
-                if chapters else
-                render_markdown(
-                    transcript,
-                    window_seconds=settings.transcript_window_seconds,
-                )
+            transcript_md = present_transcript(
+                transcript,
+                settings,
+                chapters=chapters or None,
             )
             body_parts.append("## 转写正文\n\n" + transcript_md)
 
