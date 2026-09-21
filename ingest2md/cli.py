@@ -38,6 +38,10 @@ def _add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--asr-language", help="ASR 语言；默认 auto")
     parser.add_argument("--limit-seconds", type=int, help="仅处理前 N 秒；0 为全片")
     parser.add_argument("--transcript-window-seconds", type=int, help="Markdown 转写阅读窗口秒数（默认 300）")
+    parser.add_argument("--transcript-enhance", choices=["none", "llm"],
+                        help="转写展示层校对；默认 none，不修改原始 TranscriptResult")
+    parser.add_argument("--transcript-enhance-model",
+                        help="展示层校对模型；为空时复用 --llm-model")
     parser.add_argument("--sensevoice-model-dir", help="本地 SenseVoiceSmall 模型目录；为空时首次使用自动下载")
     parser.add_argument("--sensevoice-chunk-seconds", type=int, help="SenseVoice WAV 切片秒数（5–30，默认 30）")
     parser.add_argument("--sensevoice-batch-size", type=int, help="SenseVoice 批量推理大小（默认 2；性能和内存充足时可尝试 4）")
@@ -50,6 +54,15 @@ def _add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--llm-api", choices=["chat", "responses"], help="多模态 LLM API 类型")
     parser.add_argument("--keep-audio", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--keep-chunks", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--media-cache", dest="media_cache_enabled",
+                        action=argparse.BooleanOptionalAction, default=None,
+                        help="失败恢复媒体缓存；默认开启")
+    parser.add_argument("--media-cache-dir", help="媒体缓存目录；默认 <output>/.cache/media")
+    parser.add_argument("--media-cache-keep-success",
+                        action=argparse.BooleanOptionalAction, default=None,
+                        help="成功后是否保留媒体缓存；默认清理")
+    parser.add_argument("--batch-retry-attempts", type=int,
+                        help="批量可重试错误的最大尝试次数；默认 3")
 
     parser.add_argument("--cookies-file", help="通用 Netscape Cookie 文件（各站专用参数优先）")
     parser.add_argument("--youtube-cookies-file", help="YouTube 专用 Netscape Cookie 文件")
@@ -103,6 +116,8 @@ def _settings_from_args(args):
         asr_language=args.asr_language,
         limit_seconds=args.limit_seconds,
         transcript_window_seconds=args.transcript_window_seconds,
+        transcript_enhance=args.transcript_enhance,
+        transcript_enhance_model=args.transcript_enhance_model,
         sensevoice_model_dir=args.sensevoice_model_dir,
         sensevoice_chunk_seconds=args.sensevoice_chunk_seconds,
         sensevoice_batch_size=args.sensevoice_batch_size,
@@ -123,6 +138,10 @@ def _settings_from_args(args):
         formats=args.formats,
         keep_audio=args.keep_audio,
         keep_chunks=args.keep_chunks,
+        media_cache_enabled=args.media_cache_enabled,
+        media_cache_dir=args.media_cache_dir,
+        media_cache_keep_success=args.media_cache_keep_success,
+        batch_retry_attempts=args.batch_retry_attempts,
     )
 
 
@@ -215,13 +234,64 @@ async def _run_batch(args) -> int:
 
     print(
         f"批量完成: 总任务 {summary.total} | 成功 {summary.success} | "
-        f"失败 {summary.failed} | 待处理 {summary.pending}"
+        f"跳过重复 {summary.duplicate} | 失败 {summary.failed} | 待处理 {summary.pending}"
     )
     print(f"状态库: {state_db}")
     return EXIT_OK if summary.failed == 0 else EXIT_FETCH_FAILED
 
 
+def build_batch_status_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="ingest2md batch status",
+        description="查看批量 SQLite 状态库，不执行采集任务",
+    )
+    parser.add_argument("--state-db", help="SQLite 状态库路径")
+    parser.add_argument("-o", "--output", "--output-dir", default=None,
+                        help="用于定位默认状态库的输出目录")
+    parser.add_argument("--config", help="配置文件路径")
+    return parser
+
+
+def batch_status_main(argv: list[str]) -> int:
+    args = build_batch_status_parser().parse_args(argv)
+    settings = load_settings(args.config, output_dir=args.output)
+    output_dir = Path(settings.output_dir).expanduser().resolve()
+    state_db = (
+        Path(args.state_db).expanduser().resolve()
+        if args.state_db
+        else output_dir / ".ingest2md-batch.sqlite3"
+    )
+    if not state_db.is_file():
+        logger.error("状态库不存在: %s", state_db)
+        return EXIT_FETCH_FAILED
+
+    store = TaskStore(state_db)
+    try:
+        report = store.status_report()
+    finally:
+        store.close()
+
+    counts = report["counts"]
+    print(
+        f"批量状态: 总任务 {report['total']} | "
+        f"成功 {counts.get('success', 0)} | "
+        f"重复 {counts.get('duplicate', 0)} | "
+        f"失败 {counts.get('failed', 0)} | "
+        f"待处理 {counts.get('pending', 0)} | "
+        f"运行中 {counts.get('running', 0)}"
+    )
+    print(f"累计尝试次数: {report['attempts']}")
+    if report["errors"]:
+        print("失败类型:")
+        for code, count in report["errors"].items():
+            print(f"  {code}: {count}")
+    print(f"状态库: {state_db}")
+    return EXIT_OK
+
+
 def batch_main(argv: list[str]) -> int:
+    if argv and argv[0] == "status":
+        return batch_status_main(argv[1:])
     args = build_batch_parser().parse_args(argv)
     _configure_logging(args.verbose)
     try:
