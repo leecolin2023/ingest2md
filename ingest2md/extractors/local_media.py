@@ -51,8 +51,11 @@ class LocalMediaExtractor:
         with tempfile.TemporaryDirectory(prefix="ingest2md-local-") as temp:
             work = Path(temp)
             runtime = getattr(self, "runtime", None)
-            backend = runtime.get_asr_backend() if runtime is not None else None
-            transcript = transcribe_audio(str(path), work, settings, backend=backend)
+            transcript = (
+                transcribe_audio(str(path), work, settings, backend=runtime.get_asr_backend())
+                if runtime is not None
+                else transcribe_audio(str(path), work, settings)
+            )
             try:
                 duration = probe_duration(str(path))
             except Exception:

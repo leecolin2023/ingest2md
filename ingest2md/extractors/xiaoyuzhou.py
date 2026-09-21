@@ -52,8 +52,11 @@ class XiaoyuzhouExtractor:
             suffix = _audio_suffix(meta["audio_url"])
             audio_path = download_url(meta["audio_url"], work / f"audio{suffix}")
             runtime = getattr(self, "runtime", None)
-            backend = runtime.get_asr_backend() if runtime is not None else None
-            transcript = transcribe_audio(str(audio_path), work, settings, backend=backend)
+            transcript = (
+                transcribe_audio(str(audio_path), work, settings, backend=runtime.get_asr_backend())
+                if runtime is not None
+                else transcribe_audio(str(audio_path), work, settings)
+            )
 
             metadata = [("来源", "小宇宙")]
             if meta["podcast_title"]:
