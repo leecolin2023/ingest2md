@@ -1,4 +1,4 @@
-# ingest2md v0.9.3 example configuration
+# ingest2md v0.11.0 example configuration
 
 # Local-first transcription. No paid API is required for the default path.
 asr_backend: "sensevoice"       # sensevoice | openai | llm
@@ -6,6 +6,8 @@ asr_language: "auto"
 limit_seconds: 0
 subtitle_window_seconds: 300
 transcript_window_seconds: 300  # Markdown 阅读窗口；与 ASR chunk 解耦
+transcript_enhance: "none"       # none | llm；只校对 Markdown 展示层，不改 raw transcript
+transcript_enhance_model: ""     # 留空复用 llm_model
 
 # SenseVoice ONNX. Leave model_dir empty to download iic/SenseVoiceSmall on first use.
 sensevoice_model_dir: ""
@@ -35,6 +37,12 @@ formats: ["md"]
 max_answers: 0
 keep_audio: false
 keep_chunks: false
+
+# Retry durability. Downloaded media is cached only to make failed retries cheap.
+media_cache_enabled: true
+media_cache_dir: ""              # 留空 -> <output>/.cache/media
+media_cache_keep_success: false
+batch_retry_attempts: 3
 
 cookies_file: ""
 youtube_cookies_file: ""
