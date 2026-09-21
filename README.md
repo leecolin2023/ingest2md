@@ -12,6 +12,61 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.11.0：Identity / Durability / Presentation Quality
+
+v0.11 不再横向增加平台，而是把现有 ingestion 骨架按长期边界一次收敛。核心执行链路变为：
+
+```text
+Content Reference
+      ↓
+Router / Adapter
+      ↓
+Resolve Identity
+      ↓
+Batch canonical dedupe
+      ↓
+Extract Document
+      ↓
+Post-extract semantic dedupe
+      ↓
+Transcript Presentation
+      ↓
+Optional LLM Text Enhancer
+      ↓
+Writer
+      ↓
+Markdown canonical output
+```
+
+这次重构解决四类问题：
+
+- **Identity / Idempotency**：YouTube、Bilibili、小宇宙、抖音、知乎、小红书等能在重型处理前尽量解析平台语义 ID；Batch 在提取前和提取后各检查一次 canonical identity，同一内容的不同入口可以直接跳过重复处理。
+- **Output Correctness**：没有 `source_id` 的网页/文档不再只使用标题命名，而是追加稳定的 source URL 短哈希；不同来源即使同标题也不会互相覆盖。JSONL/CSV 的 `name/tags` 正式进入 Document/Markdown/JSON；元数据变化会让成功任务重新进入 pending。
+- **Durability**：timeout、429、502/503/504 等临时错误默认最多尝试 3 次（1s / 5s 退避）；网络媒体下载成功但后续 ASR/写入失败时，媒体保存在 `<output>/.cache/media`，重试可直接复用；成功后默认清理。
+- **Transcript Quality**：新增可选 `transcript_enhance=llm`。LLM 只校正 Markdown 展示层的明显 ASR 错字、专有名词、英文产品名、标点和断句；底层 `TranscriptResult` 不修改，因此 SRT/JSON 仍保持原始转写和时间戳。
+
+Batch 状态也成为一等能力：
+
+```bash
+ingest2md batch sources.jsonl -o output/batch --resume
+ingest2md batch status -o output/batch
+```
+
+状态库会区分 `success / duplicate / failed / pending / running`，并统计累计尝试次数与失败类型。
+
+需要展示层校对时显式开启：
+
+```bash
+ingest2md "<video-or-podcast>" \
+  --transcript-enhance llm \
+  --llm-api-key "<key>" \
+  --llm-model "<model>"
+```
+
+默认仍是 `transcript_enhance=none`，完全保持 Local-first 路径。增强失败时回退原始转写，不阻断 ingestion。
+
+v0.11 **仍然没有**引入通用 Pipeline Engine、ProviderManager、动态 Plugin Framework、并发 Scheduler、VAD 或 speaker diarization。Batch 继续串行执行；吞吐并发留到真实 benchmark 证明有必要后再做。
+
 ## v0.9.3：Podcast / Long-form Transcript
 
 这一版把长音频的“模型切片”与“最终阅读结构”正式分开，并优先增强小宇宙：
