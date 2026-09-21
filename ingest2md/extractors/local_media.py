@@ -11,7 +11,7 @@ from ingest2md.extractors.video import retain_media
 from ingest2md.media.audio import probe_duration
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
-from ingest2md.transcription.writers import render_markdown
+from ingest2md.transcription.presentation import present_transcript
 
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg", ".opus"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v"}
@@ -77,7 +77,7 @@ class LocalMediaExtractor:
                 source_url=path.as_uri(),
                 source_type="local_media",
                 metadata=metadata,
-                body_md="## 转写正文\n\n" + render_markdown(transcript, window_seconds=settings.transcript_window_seconds),
+                body_md="## 转写正文\n\n" + present_transcript(transcript, settings),
                 transcript=transcript,
             )
             retain_media(
