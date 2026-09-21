@@ -77,7 +77,7 @@ class LocalMediaExtractor:
                 source_url=path.as_uri(),
                 source_type="local_media",
                 metadata=metadata,
-                body_md="## 转写正文\n\n" + render_markdown(transcript),
+                body_md="## 转写正文\n\n" + render_markdown(transcript, window_seconds=settings.transcript_window_seconds),
                 transcript=transcript,
             )
             retain_media(
