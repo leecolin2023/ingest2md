@@ -12,6 +12,27 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.9.1：Long-lived Runtime
+
+批量执行开始复用真正昂贵的运行资源，但 Adapter 仍只负责单项内容：
+
+- 新增 `RuntimeContext`，单条与 batch 共用同一执行资源抽象；
+- 同一批次只创建一个 ASR backend；
+- `SenseVoiceBackend` 缓存已加载的 ONNX 模型，同一批次多个媒体不再重复初始化模型；
+- 新增 `BrowserRuntime`，知乎 / 小红书 / 抖音 / Generic Web fallback 复用同一个 Chromium 进程；
+- 每个网页任务仍创建独立 BrowserContext，并在任务结束后关闭，避免 Cookie/页面状态串任务；
+- Runtime 与 SQLite TaskStore 完全分离：Runtime 管执行资源，Batch 管任务状态；
+- 当前仍保持串行批量；并发和资源 semaphore 留到后续真实 benchmark 再决定。
+
+整体关系：
+
+```text
+single ─┐
+        ├─ IngestionEngine ─ RuntimeContext ─ Router ─ Extractor
+batch ──┘                    ├─ shared ASR backend / SenseVoice model
+                             └─ shared Chromium / isolated contexts
+```
+
 ## v0.9.0：Batch Foundation
 
 批量能力成为独立于平台的核心调度层，而不是某个平台 Adapter 的循环：
