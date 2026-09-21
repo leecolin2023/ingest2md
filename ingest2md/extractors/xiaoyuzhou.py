@@ -30,8 +30,8 @@ _EPISODE_RE = re.compile(r"/episode/([0-9a-fA-F]{24})(?:/|$)")
 _AUDIO_RE = re.compile(r"https://media\.xyzcdn\.net/[^\"'\\\s<>]+\.(?:m4a|mp3|aac|wav)(?:\?[^\"'\\\s<>]*)?", re.I)
 
 _CHAPTER_TIME_RE = re.compile(
-    r"^(?P<time>(?:(?:\\d{1,2}):)?\\d{1,2}:\\d{2})"
-    r"\\s*(?:[-–—:：]\\s*)?(?P<title>.+?)\\s*$"
+    r"^(?P<time>(?:(?:\d{1,2}):)?\d{1,2}:\d{2})"
+    r"\s*(?:[-–—:：]\s*)?(?P<title>.+?)\s*$"
 )
 
 
@@ -256,9 +256,9 @@ def parse_shownote_chapters(shownotes_md: str) -> list[tuple[float, str]]:
         line = raw_line.strip()
         if not line:
             continue
-        line = re.sub(r"^\\s*(?:#{1,6}\\s+|[-*+>]\\s+)+", "", line).strip()
+        line = re.sub(r"^\s*(?:#{1,6}\s+|[-*+>]\s+)+", "", line).strip()
         line = re.sub(
-            r"^\\[(?P<time>(?:(?:\\d{1,2}):)?\\d{1,2}:\\d{2})\\]\\([^)]+\\)",
+            r"^\[(?P<time>(?:(?:\d{1,2}):)?\d{1,2}:\d{2})\]\([^)]+\)",
             lambda match: match.group("time"),
             line,
         )
