@@ -1,4 +1,5 @@
 """Shared ffmpeg helpers; each ASR backend chooses its own chunk format and size."""
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -25,6 +26,33 @@ def probe_duration(audio_path: str) -> float:
         capture_output=True, text=True, check=True,
     )
     return float(out.stdout.strip())
+
+
+def probe_media_info(media_path: str) -> dict:
+    """Return enough ffprobe metadata to reject placeholder/video-only media."""
+    out = subprocess.run(
+        [
+            _ffmpeg_bin("ffprobe"), "-v", "error",
+            "-show_entries", "format=duration:stream=codec_type",
+            "-of", "json", media_path,
+        ],
+        capture_output=True, text=True, check=True,
+    )
+    payload = json.loads(out.stdout or "{}")
+    stream_types = {
+        str(item.get("codec_type") or "")
+        for item in payload.get("streams") or []
+        if isinstance(item, dict)
+    }
+    try:
+        duration = float((payload.get("format") or {}).get("duration") or 0)
+    except (TypeError, ValueError):
+        duration = 0.0
+    return {
+        "duration": duration,
+        "has_audio": "audio" in stream_types,
+        "has_video": "video" in stream_types,
+    }
 
 
 def _chunk_audio(audio_path: str, chunk_seconds: int, limit_seconds: int,
