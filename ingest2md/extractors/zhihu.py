@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
-from ingest2md.browser import load_netscape_cookies, launch_chromium
+from ingest2md.browser import browser_context, load_netscape_cookies
 from ingest2md.config import Settings, load_settings
 from ingest2md.htmlutils import clean_fragment
 from ingest2md.model import Document
@@ -51,8 +51,9 @@ class ZhihuExtractor:
     name = "知乎问题"
     description = "zhihu.com/question/... → 问题 + 尽可能多回答 → 单个 Markdown"
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, runtime=None):
         self.settings = settings
+        self.runtime = runtime
 
     def match(self, url: str) -> bool:
         return host_of(url) in _HOSTS and bool(_QUESTION_RE.search(urlparse(url).path))
@@ -67,10 +68,11 @@ class ZhihuExtractor:
         answers: dict[str, ZhihuAnswer] = {}
         question: ZhihuQuestionSnapshot | None = None
 
-        from playwright.async_api import async_playwright
-        async with async_playwright() as p:
-            browser = await launch_chromium(p, headless=True)
-            context = await browser.new_context(user_agent=DEFAULT_USER_AGENT, locale="zh-CN")
+        async with browser_context(
+            self.runtime.browser if self.runtime else None,
+            user_agent=DEFAULT_USER_AGENT,
+            locale="zh-CN",
+        ) as context:
             cookie_file = settings.zhihu_cookies_file or settings.cookies_file
             if cookie_file:
                 cookies = load_netscape_cookies(cookie_file, "zhihu.com")
@@ -80,13 +82,11 @@ class ZhihuExtractor:
             try:
                 response = await page.goto(canonical, wait_until="domcontentloaded", timeout=35_000)
             except Exception as exc:
-                await browser.close()
                 message = str(exc)
                 if "ERR_BLOCKED_BY_ADMINISTRATOR" in message:
                     raise RuntimeError("当前运行环境阻止访问知乎（ERR_BLOCKED_BY_ADMINISTRATOR）") from exc
                 raise RuntimeError(f"知乎页面访问失败: {message}") from exc
             if response and response.status >= 400:
-                await browser.close()
                 raise RuntimeError(f"知乎页面访问失败: HTTP {response.status}")
             await page.wait_for_timeout(1500)
 
@@ -113,7 +113,6 @@ class ZhihuExtractor:
                     break
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await page.wait_for_timeout(900)
-            await browser.close()
 
         if not question or not question.title:
             raise RuntimeError("未能读取知乎问题标题；可能需要登录 Cookie 或页面结构已变化")
