@@ -15,6 +15,7 @@ class Settings:
     asr_language: str = "auto"
     limit_seconds: int = 0
     subtitle_window_seconds: int = 300
+    transcript_window_seconds: int = 300
 
     # Local SenseVoice ONNX.
     sensevoice_model_dir: str = ""
@@ -126,7 +127,7 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
         raise ValueError("max_answers 必须是非负整数")
 
     for key in (
-        "subtitle_window_seconds", "sensevoice_chunk_seconds", "sensevoice_batch_size",
+        "subtitle_window_seconds", "transcript_window_seconds", "sensevoice_chunk_seconds", "sensevoice_batch_size",
         "openai_asr_chunk_seconds", "openai_asr_timeout", "llm_chunk_seconds",
     ):
         if type(getattr(settings, key)) is not int or getattr(settings, key) <= 0:

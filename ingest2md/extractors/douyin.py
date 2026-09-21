@@ -143,7 +143,7 @@ class DouyinExtractor:
             body_parts = []
             if meta["description"]:
                 body_parts.append("## 视频简介\n\n" + meta["description"])
-            body_parts.append("## 转写正文\n\n" + render_markdown(transcript))
+            body_parts.append("## 转写正文\n\n" + render_markdown(transcript, window_seconds=settings.transcript_window_seconds))
 
             doc = Document(
                 title=meta["title"],

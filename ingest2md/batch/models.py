@@ -28,7 +28,7 @@ class BatchSummary:
 
 
 _FINGERPRINT_FIELDS = (
-    "asr_backend", "asr_language", "limit_seconds", "subtitle_window_seconds",
+    "asr_backend", "asr_language", "limit_seconds", "subtitle_window_seconds", "transcript_window_seconds",
     "sensevoice_model_dir", "sensevoice_chunk_seconds", "sensevoice_batch_size",
     "sensevoice_quantize", "openai_asr_base_url", "openai_asr_model",
     "openai_asr_chunk_seconds", "asr_prompt", "llm_base_url", "llm_model",

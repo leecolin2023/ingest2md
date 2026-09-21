@@ -87,7 +87,7 @@ class BilibiliExtractor:
                     ("语言", transcript.language or "原语言"),
                     ("时间戳精度", transcript.timestamp_precision),
                 ],
-                body_md=render_markdown(transcript),
+                body_md=render_markdown(transcript, window_seconds=settings.transcript_window_seconds),
                 transcript=transcript,
                 source_id=f"{bvid}_p{part}",
                 source_type="bilibili",

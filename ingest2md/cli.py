@@ -37,6 +37,7 @@ def _add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
                         help="ASR 后端；默认 sensevoice 本地转写")
     parser.add_argument("--asr-language", help="ASR 语言；默认 auto")
     parser.add_argument("--limit-seconds", type=int, help="仅处理前 N 秒；0 为全片")
+    parser.add_argument("--transcript-window-seconds", type=int, help="Markdown 转写阅读窗口秒数（默认 300）")
     parser.add_argument("--sensevoice-model-dir", help="本地 SenseVoiceSmall 模型目录；为空时首次使用自动下载")
     parser.add_argument("--sensevoice-chunk-seconds", type=int, help="SenseVoice WAV 切片秒数（5–30，默认 30）")
     parser.add_argument("--sensevoice-batch-size", type=int, help="SenseVoice 批量推理大小（默认 2；性能和内存充足时可尝试 4）")
@@ -101,6 +102,7 @@ def _settings_from_args(args):
         asr_backend=args.asr_backend,
         asr_language=args.asr_language,
         limit_seconds=args.limit_seconds,
+        transcript_window_seconds=args.transcript_window_seconds,
         sensevoice_model_dir=args.sensevoice_model_dir,
         sensevoice_chunk_seconds=args.sensevoice_chunk_seconds,
         sensevoice_batch_size=args.sensevoice_batch_size,

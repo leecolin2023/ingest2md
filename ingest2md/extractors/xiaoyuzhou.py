@@ -17,16 +17,23 @@ from ingest2md.config import Settings, load_settings
 from ingest2md.extractors.video import retain_media
 from ingest2md.htmlutils import clean_fragment, meta_content, text_of_html
 from ingest2md.netutils import DEFAULT_USER_AGENT
+from ingest2md.media.audio import probe_media_info
 from ingest2md.media.download import download_url
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
-from ingest2md.transcription.writers import render_markdown
+from ingest2md.transcription.writers import render_chaptered_markdown, render_markdown
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
 _HOSTS = {"xiaoyuzhoufm.com", "www.xiaoyuzhoufm.com"}
 _EPISODE_RE = re.compile(r"/episode/([0-9a-fA-F]{24})(?:/|$)")
 _AUDIO_RE = re.compile(r"https://media\.xyzcdn\.net/[^\"'\\\s<>]+\.(?:m4a|mp3|aac|wav)(?:\?[^\"'\\\s<>]*)?", re.I)
+
+_CHAPTER_TIME_RE = re.compile(
+    r"^(?P<time>(?:(?:\d{1,2}):)?\d{1,2}:\d{2})"
+    r"\s*(?:[-–—:：]\s*)?(?P<title>.+?)\s*$"
+)
+
 
 class XiaoyuzhouExtractor:
     name = "小宇宙播客"
@@ -52,6 +59,8 @@ class XiaoyuzhouExtractor:
             work = Path(temp)
             suffix = _audio_suffix(meta["audio_url"])
             audio_path = download_url(meta["audio_url"], work / f"audio{suffix}")
+            audio_info = probe_media_info(str(audio_path))
+            _validate_episode_audio(audio_info, int(meta["duration"] or 0))
             transcript = (
                     transcribe_audio(str(audio_path), work, settings, backend=self.runtime.asr_backend)
                     if self.runtime is not None
@@ -85,7 +94,20 @@ class XiaoyuzhouExtractor:
             elif description:
                 # Keep the stable section name even for episodes that only expose a description.
                 body_parts.append("## Show Notes\n\n" + description)
-            body_parts.append("## 转写正文\n\n" + render_markdown(transcript))
+            chapters = parse_shownote_chapters(shownotes)
+            transcript_md = (
+                render_chaptered_markdown(
+                    transcript,
+                    chapters,
+                    window_seconds=settings.transcript_window_seconds,
+                )
+                if chapters else
+                render_markdown(
+                    transcript,
+                    window_seconds=settings.transcript_window_seconds,
+                )
+            )
+            body_parts.append("## 转写正文\n\n" + transcript_md)
 
             doc = Document(
                 title=meta["title"],
@@ -212,3 +234,66 @@ def _human_duration(seconds: int) -> str:
 
 def _normalized_text(text: str) -> str:
     return re.sub(r"\s+", "", text or "")
+
+
+
+def _timestamp_seconds(value: str) -> float:
+    parts = [int(part) for part in value.split(":")]
+    if len(parts) == 2:
+        minutes, seconds = parts
+        return float(minutes * 60 + seconds)
+    if len(parts) == 3:
+        hours, minutes, seconds = parts
+        return float(hours * 3600 + minutes * 60 + seconds)
+    raise ValueError(f"不支持的时间戳: {value}")
+
+
+def parse_shownote_chapters(shownotes_md: str) -> list[tuple[float, str]]:
+    """Extract semantic podcast chapters from timestamped Show Notes."""
+    chapters: list[tuple[float, str]] = []
+    seen: set[float] = set()
+    for raw_line in (shownotes_md or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^\s*(?:#{1,6}\s+|[-*+>]\s+)+", "", line).strip()
+        line = re.sub(
+            r"^\[(?P<time>(?:(?:\d{1,2}):)?\d{1,2}:\d{2})\]\([^)]+\)",
+            lambda match: match.group("time"),
+            line,
+        )
+        match = _CHAPTER_TIME_RE.match(line)
+        if not match:
+            continue
+        try:
+            start = _timestamp_seconds(match.group("time"))
+        except ValueError:
+            continue
+        title = match.group("title").strip().strip("-–—:： ")
+        if not title or start in seen:
+            continue
+        seen.add(start)
+        chapters.append((start, title))
+    return sorted(chapters, key=lambda item: item[0])
+
+
+def _validate_episode_audio(media_info: dict, expected_duration: int) -> None:
+    """Reject broken/truncated podcast downloads before spending ASR time."""
+    if not media_info.get("has_audio"):
+        raise RuntimeError("小宇宙音频校验失败：下载文件没有音轨")
+    try:
+        actual = float(media_info.get("duration") or 0)
+    except (TypeError, ValueError):
+        actual = 0.0
+    if actual <= 0.5:
+        raise RuntimeError("小宇宙音频校验失败：下载文件时长异常")
+    if expected_duration >= 60 and actual < expected_duration * 0.9:
+        raise RuntimeError(
+            "小宇宙音频校验失败：下载音频明显不完整 "
+            f"({actual:.1f}s / 页面约 {expected_duration}s)"
+        )
+    if expected_duration and abs(actual - expected_duration) > max(30, expected_duration * 0.1):
+        logger.warning(
+            "小宇宙音频时长与页面元数据差异较大: 实际 %.1fs / 页面 %ss",
+            actual, expected_duration,
+        )
