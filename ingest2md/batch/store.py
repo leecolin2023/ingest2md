@@ -39,6 +39,8 @@ class TaskStore:
                 output_path TEXT NOT NULL DEFAULT '',
                 error_code TEXT NOT NULL DEFAULT '',
                 error_message TEXT NOT NULL DEFAULT '',
+                retryable INTEGER NOT NULL DEFAULT 0,
+                duplicate_of_task_id INTEGER,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 started_at TEXT,
                 finished_at TEXT,
@@ -46,6 +48,21 @@ class TaskStore:
                 UNIQUE(task_key, config_fingerprint)
             )
         """)
+        columns = {
+            row["name"] for row in self.db.execute("PRAGMA table_info(tasks)").fetchall()
+        }
+        if "retryable" not in columns:
+            self.db.execute(
+                "ALTER TABLE tasks ADD COLUMN retryable INTEGER NOT NULL DEFAULT 0"
+            )
+        if "duplicate_of_task_id" not in columns:
+            self.db.execute(
+                "ALTER TABLE tasks ADD COLUMN duplicate_of_task_id INTEGER"
+            )
+        self.db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_canonical "
+            "ON tasks(canonical_key, config_fingerprint, status)"
+        )
         self.db.commit()
 
     def register(self, items: list[BatchItem], fingerprint: str) -> list[int]:
@@ -54,10 +71,16 @@ class TaskStore:
             normalized, task_key = task_identity(item.source)
             self.db.execute(
                 """
-                INSERT OR IGNORE INTO tasks (
+                INSERT INTO tasks (
                     raw_source, normalized_source, task_key, config_fingerprint,
                     name, tags_json
                 ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(task_key, config_fingerprint) DO UPDATE SET
+                    raw_source=excluded.raw_source,
+                    normalized_source=excluded.normalized_source,
+                    name=excluded.name,
+                    tags_json=excluded.tags_json,
+                    updated_at=CURRENT_TIMESTAMP
                 """,
                 (
                     item.source, normalized, task_key, fingerprint, item.name,
@@ -80,7 +103,9 @@ class TaskStore:
             f"""UPDATE tasks
                 SET status='pending', stage='', attempts=0, output_path='',
                     source_type='', source_id='', canonical_key='',
-                    error_code='', error_message='', started_at=NULL, finished_at=NULL,
+                    error_code='', error_message='', retryable=0,
+                    duplicate_of_task_id=NULL,
+                    started_at=NULL, finished_at=NULL,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE id IN ({sql})""",
             params,
@@ -105,7 +130,8 @@ class TaskStore:
         sql, params = self._in_clause(ids)
         self.db.execute(
             f"""UPDATE tasks SET status='pending', stage='', error_code='',
-                error_message='', finished_at=NULL, updated_at=CURRENT_TIMESTAMP
+                error_message='', retryable=0, finished_at=NULL,
+                updated_at=CURRENT_TIMESTAMP
                 WHERE id IN ({sql}) AND status='failed'""",
             params,
         )
@@ -116,7 +142,8 @@ class TaskStore:
             return
         sql, params = self._in_clause(ids)
         rows = self.db.execute(
-            f"SELECT id, output_path FROM tasks WHERE id IN ({sql}) AND status='success'",
+            f"""SELECT id, output_path FROM tasks
+                WHERE id IN ({sql}) AND status IN ('success', 'duplicate')""",
             params,
         ).fetchall()
         stale = [
@@ -127,7 +154,8 @@ class TaskStore:
             sql2, params2 = self._in_clause(stale)
             self.db.execute(
                 f"""UPDATE tasks SET status='pending', output_path='',
-                    updated_at=CURRENT_TIMESTAMP WHERE id IN ({sql2})""",
+                    duplicate_of_task_id=NULL, updated_at=CURRENT_TIMESTAMP
+                    WHERE id IN ({sql2})""",
                 params2,
             )
             self.db.commit()
@@ -145,9 +173,60 @@ class TaskStore:
     def mark_running(self, task_id: int, stage: str = "ingesting") -> None:
         self.db.execute(
             """UPDATE tasks SET status='running', stage=?, attempts=attempts+1,
-               started_at=CURRENT_TIMESTAMP, finished_at=NULL,
+               started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
+               finished_at=NULL, retryable=0,
                updated_at=CURRENT_TIMESTAMP WHERE id=?""",
             (stage, task_id),
+        )
+        self.db.commit()
+
+    def set_identity(
+        self,
+        task_id: int,
+        canonical_key: str,
+        source_type: str = "",
+        source_id: str = "",
+    ) -> None:
+        self.db.execute(
+            """UPDATE tasks SET canonical_key=?, source_type=?, source_id=?,
+               updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+            (canonical_key, source_type, source_id, task_id),
+        )
+        self.db.commit()
+
+    def find_completed_by_canonical(
+        self,
+        canonical_key: str,
+        fingerprint: str,
+        *,
+        exclude_task_id: int,
+    ) -> sqlite3.Row | None:
+        if not canonical_key:
+            return None
+        rows = self.db.execute(
+            """SELECT * FROM tasks
+               WHERE canonical_key=? AND config_fingerprint=? AND id<>?
+                 AND status IN ('success', 'duplicate')
+               ORDER BY CASE status WHEN 'success' THEN 0 ELSE 1 END, id""",
+            (canonical_key, fingerprint, exclude_task_id),
+        ).fetchall()
+        for row in rows:
+            if row["output_path"] and Path(row["output_path"]).exists():
+                return row
+        return None
+
+    def mark_duplicate(self, task_id: int, existing: sqlite3.Row) -> None:
+        self.db.execute(
+            """UPDATE tasks SET status='duplicate', stage='done',
+               canonical_key=?, source_type=?, source_id=?, output_path=?,
+               duplicate_of_task_id=?, error_code='', error_message='',
+               retryable=0, finished_at=CURRENT_TIMESTAMP,
+               updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+            (
+                existing["canonical_key"], existing["source_type"],
+                existing["source_id"], existing["output_path"],
+                int(existing["id"]), task_id,
+            ),
         )
         self.db.commit()
 
@@ -155,7 +234,8 @@ class TaskStore:
         self.db.execute(
             """UPDATE tasks SET status='success', stage='done', source_type=?,
                source_id=?, canonical_key=?, output_path=?, error_code='',
-               error_message='', finished_at=CURRENT_TIMESTAMP,
+               error_message='', retryable=0, duplicate_of_task_id=NULL,
+               finished_at=CURRENT_TIMESTAMP,
                updated_at=CURRENT_TIMESTAMP WHERE id=?""",
             (
                 result.source_type, result.source_id, result.canonical_key,
@@ -164,12 +244,18 @@ class TaskStore:
         )
         self.db.commit()
 
-    def mark_failed(self, task_id: int, code: str, message: str) -> None:
+    def mark_failed(
+        self,
+        task_id: int,
+        code: str,
+        message: str,
+        retryable: bool = False,
+    ) -> None:
         self.db.execute(
             """UPDATE tasks SET status='failed', stage='', error_code=?,
-               error_message=?, finished_at=CURRENT_TIMESTAMP,
+               error_message=?, retryable=?, finished_at=CURRENT_TIMESTAMP,
                updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-            (code, message[:4000], task_id),
+            (code, message[:4000], int(bool(retryable)), task_id),
         )
         self.db.commit()
 
@@ -189,7 +275,30 @@ class TaskStore:
             failed=counts.get("failed", 0),
             pending=counts.get("pending", 0),
             running=counts.get("running", 0),
+            duplicate=counts.get("duplicate", 0),
         )
+
+    def status_report(self) -> dict:
+        rows = self.db.execute(
+            "SELECT status, COUNT(*) AS count FROM tasks GROUP BY status"
+        ).fetchall()
+        counts = {row["status"]: int(row["count"]) for row in rows}
+        errors = self.db.execute(
+            """SELECT error_code, COUNT(*) AS count FROM tasks
+               WHERE status='failed' GROUP BY error_code ORDER BY count DESC"""
+        ).fetchall()
+        total = sum(counts.values())
+        attempts = self.db.execute(
+            "SELECT COALESCE(SUM(attempts), 0) AS total FROM tasks"
+        ).fetchone()
+        return {
+            "total": total,
+            "counts": counts,
+            "errors": {
+                (row["error_code"] or "failed"): int(row["count"]) for row in errors
+            },
+            "attempts": int(attempts["total"]),
+        }
 
     @staticmethod
     def _in_clause(ids: list[int]) -> tuple[str, list[int]]:
