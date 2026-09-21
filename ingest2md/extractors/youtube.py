@@ -4,15 +4,17 @@ import logging
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from ingest2md.config import Settings, load_settings
 from ingest2md.extractors.video import attach_video_description, retain_media
+from ingest2md.identity import SourceIdentity
 from ingest2md.media import youtube as source
 from ingest2md.media.subtitles import fetch_yt_dlp_subtitles_with_info
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
 from ingest2md.transcription.subtitles import subtitles_to_transcript
-from ingest2md.transcription.writers import render_markdown
+from ingest2md.transcription.presentation import present_transcript
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
@@ -35,12 +37,25 @@ class YouTubeExtractor:
     def match(self, url: str) -> bool:
         return host_of(url) in source.HOSTS
 
+    async def identity(self, url: str) -> SourceIdentity:
+        normalized = source.normalize_video_url(url)
+        video_id = parse_qs(urlparse(normalized).query).get("v", [""])[0]
+        return SourceIdentity(f"youtube:{video_id}", "youtube", video_id)
+
     async def extract(self, url: str, output_dir: Path) -> Document:
         return await asyncio.to_thread(self._extract, url, output_dir)
 
     def _extract(self, url: str, output_dir: Path) -> Document:
         url = source.normalize_video_url(url)
         settings = self.settings or load_settings()
+        video_id = parse_qs(urlparse(url).query).get("v", [""])[0]
+        cache_key = f"youtube:{video_id}"
+        cache = (
+            self.runtime.media_cache
+            if self.runtime is not None and settings.media_cache_enabled
+            else None
+        )
+        cached_audio = cache.get(cache_key) if cache is not None else None
         cookies_file = settings.youtube_cookies_file or settings.cookies_file
         if cookies_file and not Path(cookies_file).expanduser().is_file():
             raise ValueError(f"Cookie 文件不存在: {cookies_file}")
@@ -67,10 +82,22 @@ class YouTubeExtractor:
                 acquisition = f"平台字幕（{track.kind}, {track.language}）"
                 if settings.keep_audio:
                     # Explicit media retention is allowed to perform a real audio download.
-                    _, audio_path = source.download_video(url, work, cookies_file)
+                    if cached_audio is not None:
+                        audio_path = str(cached_audio)
+                    else:
+                        _, audio_path = source.download_video(url, work, cookies_file)
+                        if cache is not None:
+                            audio_path = str(cache.store(cache_key, audio_path))
             else:
                 logger.info("未取得可用字幕；此时才下载 YouTube 音频并使用 %s ASR", settings.asr_backend)
-                meta, audio_path = source.download_video(url, work, cookies_file)
+                if cached_audio is not None and subtitle_result is not None:
+                    meta = source.metadata_from_info(subtitle_result.info, url)
+                    audio_path = str(cached_audio)
+                    logger.info("YouTube：复用上次失败任务留下的媒体缓存")
+                else:
+                    meta, audio_path = source.download_video(url, work, cookies_file)
+                    if cache is not None:
+                        audio_path = str(cache.store(cache_key, audio_path))
                 transcript = (
                     transcribe_audio(audio_path, work, settings, backend=self.runtime.asr_backend)
                     if self.runtime is not None
@@ -84,7 +111,7 @@ class YouTubeExtractor:
                 source_id=meta["id"],
                 source_type="youtube",
                 transcript=transcript,
-                body_md=render_markdown(transcript, window_seconds=settings.transcript_window_seconds),
+                body_md=present_transcript(transcript, settings),
                 metadata=[
                     ("频道", meta["uploader"]),
                     ("时长（秒）", str(meta["duration"])),

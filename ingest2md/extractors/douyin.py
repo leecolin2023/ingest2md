@@ -3,18 +3,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
+
+import httpx
 
 from ingest2md.config import Settings, load_settings
 from ingest2md.extractors.video import retain_media
+from ingest2md.identity import SourceIdentity
 from ingest2md.media import douyin as source
 from ingest2md.media.download import download_url
 from ingest2md.media.audio import probe_media_info
 from ingest2md.model import Document
+from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.transcription.service import transcribe_audio
-from ingest2md.transcription.writers import render_markdown
+from ingest2md.transcription.presentation import present_transcript
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +42,27 @@ class DouyinExtractor:
     def match(self, url: str) -> bool:
         return source.is_douyin_url(url)
 
+    async def identity(self, url: str) -> SourceIdentity | None:
+        def video_id(value: str) -> str:
+            match = re.search(r"/video/(\d+)", urlparse(value).path)
+            return match.group(1) if match else ""
+
+        found = video_id(url)
+        if not found:
+            try:
+                async with httpx.AsyncClient(
+                    headers={"User-Agent": DEFAULT_USER_AGENT},
+                    follow_redirects=True,
+                    timeout=15,
+                ) as client:
+                    response = await client.get(url)
+                    found = video_id(str(response.url))
+            except Exception:
+                found = ""
+        if found:
+            return SourceIdentity(f"douyin:{found}", "douyin", found)
+        return None
+
     async def extract(self, url: str, output_dir: Path) -> Document:
         settings = self.settings or load_settings()
         cookie_file = settings.douyin_cookies_file or settings.cookies_file
@@ -55,7 +82,13 @@ class DouyinExtractor:
             if meta.get("cookie_header"):
                 headers["Cookie"] = meta["cookie_header"]
 
-            media_path = None
+            cache_key = f"douyin:{meta['video_id']}" if meta.get("video_id") else ""
+            cache = (
+                self.runtime.media_cache
+                if self.runtime is not None and settings.media_cache_enabled and cache_key
+                else None
+            )
+            media_path = cache.get(cache_key) if cache is not None else None
             media_info = None
             candidate_errors = []
             candidates = meta.get("media_candidates") or [meta["media_url"]]
@@ -64,7 +97,18 @@ class DouyinExtractor:
             except (TypeError, ValueError):
                 expected_duration = 0.0
 
-            for index, candidate in enumerate(candidates):
+            if media_path is not None:
+                try:
+                    media_info = await asyncio.to_thread(probe_media_info, str(media_path))
+                    if not media_info.get("has_audio") or float(media_info.get("duration") or 0) <= 0.5:
+                        raise RuntimeError("缓存媒体无有效音轨")
+                    logger.info("抖音：复用上次失败任务留下的媒体缓存")
+                except Exception:
+                    cache.discard(cache_key)
+                    media_path = None
+                    media_info = None
+
+            for index, candidate in enumerate(candidates) if media_path is None else []:
                 downloaded = None
                 try:
                     downloaded = await asyncio.to_thread(
@@ -98,6 +142,8 @@ class DouyinExtractor:
                         continue
                     media_path = downloaded
                     media_info = candidate_info
+                    if cache is not None:
+                        media_path = cache.store(cache_key, media_path)
                     break
                 except Exception as exc:
                     if downloaded is not None:
@@ -143,7 +189,7 @@ class DouyinExtractor:
             body_parts = []
             if meta["description"]:
                 body_parts.append("## 视频简介\n\n" + meta["description"])
-            body_parts.append("## 转写正文\n\n" + render_markdown(transcript, window_seconds=settings.transcript_window_seconds))
+            body_parts.append("## 转写正文\n\n" + present_transcript(transcript, settings))
 
             doc = Document(
                 title=meta["title"],

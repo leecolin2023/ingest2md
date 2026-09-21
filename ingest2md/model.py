@@ -1,6 +1,7 @@
 """Shared lightweight data model and output writer."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass, field
@@ -20,6 +21,10 @@ def sanitize_filename(name: str, max_length: int = 80) -> str:
     return cleaned[:max_length]
 
 
+def _short_artifact_key(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+
+
 @dataclass
 class Document:
     """One user-facing content object rendered primarily as Markdown."""
@@ -36,16 +41,31 @@ class Document:
     attachments: list[str] = field(default_factory=list)
     original_title: str = ""
     original_description: str = ""
+    ingestion_name: str = ""
+    ingestion_tags: tuple[str, ...] = ()
+    canonical_key: str = ""
 
     @property
     def dirname(self) -> str:
         title = sanitize_filename(self.title)
-        return f"{title}__{sanitize_filename(self.source_id)}" if self.source_id else title
+        if self.source_id:
+            return f"{title}__{sanitize_filename(self.source_id)}"
+        if self.source_type:
+            # Artifact naming must stay stable even if batch canonical identity is
+            # refined after extraction. Some adapters localize assets before the
+            # engine performs the final identity check.
+            return f"{title}__{_short_artifact_key(self.source_url)}"
+        return title
 
     def build_markdown(self) -> str:
         header = [f"# {self.title}"]
+        if self.ingestion_name:
+            header.append(f"> **任务名称**: {self.ingestion_name}")
+        if self.ingestion_tags:
+            header.append(f"> **标签**: {', '.join(self.ingestion_tags)}")
         if self.metadata:
             header.extend(f"> **{k}**: {v}" for k, v in self.metadata if v)
+        if len(header) > 1:
             header.append(">")
         header.append(f"> 原文链接: {self.source_url}")
         return "\n".join(header) + "\n\n---\n\n" + self.body_md.strip() + "\n"
@@ -56,7 +76,10 @@ def _record_for_json(doc: Document) -> dict:
         "source_url": doc.source_url,
         "source_id": doc.source_id,
         "source_type": doc.source_type,
+        "canonical_key": doc.canonical_key,
         "title": doc.title,
+        "ingestion_name": doc.ingestion_name,
+        "ingestion_tags": list(doc.ingestion_tags),
         "metadata": doc.metadata,
         "body_md": doc.body_md,
         "attachments": doc.attachments,

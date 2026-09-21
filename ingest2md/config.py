@@ -16,6 +16,8 @@ class Settings:
     limit_seconds: int = 0
     subtitle_window_seconds: int = 300
     transcript_window_seconds: int = 300
+    transcript_enhance: str = "none"  # none | llm; presentation layer only
+    transcript_enhance_model: str = ""  # empty -> reuse llm_model
 
     # Local SenseVoice ONNX.
     sensevoice_model_dir: str = ""
@@ -50,6 +52,12 @@ class Settings:
     formats: tuple[str, ...] = ("md",)
     keep_audio: bool = False
     keep_chunks: bool = False
+
+    # Retry durability. Media cache is only for downloaded media, not HTML/DOM.
+    media_cache_enabled: bool = True
+    media_cache_dir: str = ""
+    media_cache_keep_success: bool = False
+    batch_retry_attempts: int = 3
 
 
 def _migrate_legacy_config(data: dict) -> dict:
@@ -91,7 +99,7 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
     for key in (
         "cookies_file", "youtube_cookies_file", "bilibili_cookies_file",
         "zhihu_cookies_file", "xiaohongshu_cookies_file", "douyin_cookies_file", "output_dir",
-        "sensevoice_model_dir",
+        "sensevoice_model_dir", "media_cache_dir",
     ):
         if data.get(key):
             value = Path(data[key]).expanduser()
@@ -113,18 +121,24 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
         data["openai_asr_model"] = os.environ["ASR_MODEL"]
     if os.environ.get("OPENCODE_API_KEY"):
         data["llm_api_key"] = os.environ["OPENCODE_API_KEY"]
+    if os.environ.get("TRANSCRIPT_ENHANCE"):
+        data["transcript_enhance"] = os.environ["TRANSCRIPT_ENHANCE"]
 
     data.update({k: v for k, v in overrides.items() if v is not None})
     settings = Settings(**data)
 
     if settings.asr_backend not in {"sensevoice", "openai", "llm"}:
         raise ValueError("asr_backend 仅支持 sensevoice, openai, llm")
+    if settings.transcript_enhance not in {"none", "llm"}:
+        raise ValueError("transcript_enhance 仅支持 none 或 llm")
     if not isinstance(settings.asr_language, str) or not settings.asr_language.strip():
         raise ValueError("asr_language 必须是非空字符串")
     if type(settings.limit_seconds) is not int or settings.limit_seconds < 0:
         raise ValueError("limit_seconds 必须是非负整数")
     if type(settings.max_answers) is not int or settings.max_answers < 0:
         raise ValueError("max_answers 必须是非负整数")
+    if type(settings.batch_retry_attempts) is not int or not 1 <= settings.batch_retry_attempts <= 10:
+        raise ValueError("batch_retry_attempts 必须是 1–10 的整数")
 
     for key in (
         "subtitle_window_seconds", "transcript_window_seconds", "sensevoice_chunk_seconds", "sensevoice_batch_size",
@@ -154,6 +168,7 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
 
     for key in (
         "asr_backend", "asr_language", "sensevoice_model_dir",
+        "transcript_enhance", "transcript_enhance_model", "media_cache_dir",
         "openai_asr_base_url", "openai_asr_api_key", "openai_asr_model", "asr_prompt",
         "llm_base_url", "llm_api_key", "llm_model", "llm_api",
         "cookies_file", "youtube_cookies_file", "bilibili_cookies_file",
@@ -162,7 +177,10 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
         if not isinstance(getattr(settings, key), str):
             raise ValueError(f"{key} 必须是字符串")
 
-    for key in ("sensevoice_quantize", "keep_audio", "keep_chunks"):
+    for key in (
+        "sensevoice_quantize", "keep_audio", "keep_chunks",
+        "media_cache_enabled", "media_cache_keep_success",
+    ):
         if type(getattr(settings, key)) is not bool:
             raise ValueError(f"{key} 必须是布尔值")
     return settings

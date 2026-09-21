@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup
 from ingest2md.browser import browser_context, load_netscape_cookies
 from ingest2md.config import Settings, load_settings
 from ingest2md.htmlutils import clean_fragment
+from ingest2md.identity import SourceIdentity
 from ingest2md.model import Document
 from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.urlutils import host_of
@@ -57,6 +58,13 @@ class ZhihuExtractor:
 
     def match(self, url: str) -> bool:
         return host_of(url) in _HOSTS and bool(_QUESTION_RE.search(urlparse(url).path))
+
+    async def identity(self, url: str) -> SourceIdentity | None:
+        match = _QUESTION_RE.search(urlparse(url).path)
+        if not match:
+            return None
+        qid = match.group(1)
+        return SourceIdentity(f"zhihu_question:{qid}", "zhihu_question", qid)
 
     async def extract(self, url: str, output_dir: Path) -> Document:
         settings = self.settings or load_settings()

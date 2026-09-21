@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from ingest2md.model import Document, sanitize_filename
+from ingest2md.model import Document
 from ingest2md.urlutils import host_of, normalize_url
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,12 @@ class WeChatExtractor:
         code_blocks = process_content(content_soup)
         image_urls = collect_image_urls(content_soup)
 
-        doc_dir = output_dir / sanitize_filename(meta["title"])
+        doc = Document(
+            title=meta["title"],
+            source_url=url,
+            source_type="wechat",
+        )
+        doc_dir = output_dir / doc.dirname
         image_map = await download_all_images(image_urls, doc_dir / "images")
 
         body = convert_to_markdown(str(content_soup), code_blocks)
@@ -97,14 +102,11 @@ class WeChatExtractor:
         if ts:
             publish_dt = datetime.fromtimestamp(ts, tz=UTC_PLUS_8)
 
-        return Document(
-            title=meta["title"],
-            source_url=url,
-            metadata=metadata,
-            body_md=body,
-            image_map=image_map,
-            publish_time=publish_dt,
-        )
+        doc.metadata = metadata
+        doc.body_md = body
+        doc.image_map = image_map
+        doc.publish_time = publish_dt
+        return doc
 
 
 def normalize_wechat_url(raw: str) -> str:
