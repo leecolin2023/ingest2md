@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ingest2md.transcription.model import TranscriptResult
 
-_UNSAFE_FILENAME_CHARS = re.compile(r'[/\\\\?%*:|"<>\\x00-\\x1f]')
+_UNSAFE_FILENAME_CHARS = re.compile(r'[/\\?%*:|"<>\x00-\x1f]')
 
 
 def sanitize_filename(name: str, max_length: int = 80) -> str:
