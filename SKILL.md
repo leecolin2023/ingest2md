@@ -48,10 +48,37 @@ ingest2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
 - 小红书：正文 + 当前可取得的笔记图片；默认不跑 OCR/Vision。
 - B站/YouTube：优先使用平台人工/自动字幕；有字幕直接保留原语言，没有字幕才进入 ASR。
 - 小宇宙：节目简介 / Show Notes + 公开音频转写；下载后先校验音轨/时长，Show Notes 时间点优先作为语义章节；默认使用本地 SenseVoice，保留原语言。
-- 抖音：用现有 Playwright 打开单视频/分享短链，只读取 DOM 已暴露的直接 http(s) 媒体地址，再复用现有 ASR；不实现私有签名。
+- 抖音：用现有 Playwright 打开单视频/分享短链，优先消费浏览器会话已经取得的详情响应，回退到 DOM 暴露的直接 http(s) 媒体地址，再复用现有 ASR；不实现私有签名。
 - 本地音视频：默认 `SenseVoiceBackend` 本地转写；也可显式选择 OpenAI-compatible ASR 或多模态 LLM audio。Backend 自己决定切片格式与时长。
 - 普通网页：HTTP 获取后优先用 Trafilatura 提取正文，必要时才用浏览器 fallback。
 - PDF/DOCX/PPTX/XLSX：交给可选的 Microsoft MarkItDown Adapter，不自行实现文档解析。
+
+## v0.11 核心架构规则
+
+v0.11 的应用主链路固定为：
+
+```text
+Content Reference
+→ Router / Adapter
+→ Resolve Identity
+→ Extract Document
+→ Transcript Presentation（如有）
+→ Writer
+→ Markdown
+```
+
+批量模式允许在 `Resolve Identity` 后和 `Extract Document` 后各做一次 canonical dedupe；单条模式仍通过同一个 `IngestionEngine.ingest_one()` 组合这些步骤。
+
+边界要求：
+
+- Adapter 只负责平台语义与采集，不引入 ProviderManager / PipelineEngine / Scheduler；
+- 已知平台尽量提供稳定 semantic identity，例如 `youtube:VIDEO_ID`、`bilibili:BV_pN`；
+- 没有 `source_id` 的内容，输出文件名必须使用稳定 source URL 短哈希防覆盖；
+- CSV/JSONL 的 `name/tags` 属于最终产物元数据；变化时成功任务需要重新生成；
+- timeout / 429 / 502 / 503 / 504 等临时错误允许自动重试，默认最多 3 次；`--retry-failed` 仍保留人工兜底；
+- 下载成功但后续失败的网络媒体可保留在 Runtime media cache，成功后默认清理；
+- `transcript_enhance=llm` 只允许修改 Markdown presentation 文本，不得修改 raw `TranscriptResult`；SRT/JSON 始终基于原始 segments；
+- 当前 Batch 保持串行；没有真实 benchmark 前不引入并发队列或 ASR semaphore。
 
 ## v0.8.3 本地 ASR 性能规则
 
@@ -215,7 +242,7 @@ v0.9.1 的 batch 会复用一个 RuntimeContext：
 - 需要浏览器的平台复用一个 Chromium 进程；
 - 每条任务仍使用独立 BrowserContext，避免 Cookie/页面状态串任务。
 
-当前 batch 仍是串行执行。不要为了并发自行在外层同时启动多个 SenseVoice 任务；并发与资源 semaphore 留给后续统一调度。
+v0.11 的 batch 仍是串行执行，但已经具备 canonical duplicate、自动 retry、失败媒体缓存与 `ingest2md batch status`。不要为了并发自行在外层同时启动多个 SenseVoice 任务；并发与资源 semaphore 留给后续真实 benchmark。
 
 
 ### TXT 自由文本扫描
