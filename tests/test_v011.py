@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from ingest2md.batch.models import BatchItem, config_fingerprint
-from ingest2md.batch.runner import BatchRunner
+from ingest2md.batch.runner import BatchRunner, classify_error
 from ingest2md.batch.store import TaskStore
 from ingest2md.cache import MediaCache
 from ingest2md.config import Settings
@@ -190,6 +190,13 @@ def test_v011_canonical_identity_finds_completed_duplicate(tmp_path: Path):
         assert summary.duplicate == 1
     finally:
         store.close()
+
+
+def test_v011_realistic_timeout_and_disconnect_messages_are_retryable():
+    assert classify_error(RuntimeError("httpx.ReadTimeout: timed out")) == ("timeout", True)
+    assert classify_error(RuntimeError("Server disconnected without sending a response")) == (
+        "transient_network", True
+    )
 
 
 def test_v011_batch_runner_retries_transient_failure(tmp_path: Path, monkeypatch):
