@@ -40,8 +40,8 @@ class GenericWebExtractor:
 
     async def extract(self, url: str, output_dir: Path) -> Document:
         try:
-            html = await _fetch_http(url)
-            doc = parse_web_page(html, url)
+            html, final_url = await _fetch_http(url)
+            doc = parse_web_page(html, final_url)
             if len(doc.body_md) >= 120:
                 return doc
         except Exception as exc:
@@ -50,7 +50,7 @@ class GenericWebExtractor:
         return parse_web_page(html, final_url)
 
 
-async def _fetch_http(url: str) -> str:
+async def _fetch_http(url: str) -> tuple[str, str]:
     async with httpx.AsyncClient(
         headers={"User-Agent": DEFAULT_USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
         follow_redirects=True,
@@ -58,7 +58,7 @@ async def _fetch_http(url: str) -> str:
     ) as client:
         response = await client.get(url)
         response.raise_for_status()
-        return response.text
+        return response.text, str(response.url)
 
 
 async def _fetch_browser(url: str, browser_runtime=None) -> tuple[str, str]:
