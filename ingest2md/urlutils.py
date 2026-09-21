@@ -7,11 +7,34 @@ from urllib.parse import urlparse
 
 _HTTP_URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 _BV_RE = re.compile(r"BV[0-9A-Za-z]{10}")
+_REFERENCE_SCAN_RE = re.compile(
+    r"(?P<url>(?i:https?://)[^\s<>\"']+)"
+    r"|(?P<bv>(?<![0-9A-Za-z])BV[0-9A-Za-z]{10}(?![0-9A-Za-z]))"
+)
 _TRAILING_PUNCTUATION = ",.;:!?，。；：！？、）)]】》〉」』\"'"
 
 
 def _strip_wrapping_quotes(raw: str) -> str:
     return raw.strip().strip("\"'").strip()
+
+
+def extract_references(raw: str) -> list[str]:
+    """Extract all URL/BV content references from arbitrary pasted text.
+
+    Results preserve source order and remove exact duplicates. URL cleanup is
+    intentionally conservative; semantic normalization still belongs to
+    :func:`normalize_reference`.
+    """
+    references: list[str] = []
+    seen: set[str] = set()
+    for match in _REFERENCE_SCAN_RE.finditer(raw or ""):
+        value = match.group("url") or match.group("bv") or ""
+        if match.group("url"):
+            value = value.rstrip(_TRAILING_PUNCTUATION)
+        if value and value not in seen:
+            seen.add(value)
+            references.append(value)
+    return references
 
 
 def extract_first_url(raw: str) -> str:

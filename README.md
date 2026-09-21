@@ -12,6 +12,30 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.9.2：Free-text Reference Scanner
+
+TXT 批量输入从“每行一个任务”升级为“自由粘贴文本扫描器”：
+
+- 新增通用 `extract_references(text)`，从任意文本中按原文顺序提取全部 `http/https` URL 与 Bilibili BV 号；
+- 同一行可以包含多个链接，不需要手工换行或插入空行；
+- 精确重复引用在 Scanner 层按首次出现去重，SQLite 仍负责规范化后的任务级去重；
+- TXT 中独占一行的现有本地文件路径继续支持；
+- `example.com/path` 这类独占一行的裸域名继续兼容；
+- 普通说明文字如果没有可识别 Reference，会被忽略而不是伪装成 URL；
+- CSV / JSONL 保持严格结构化语义，不受此次变化影响。
+
+因此可以直接把 App/网页中连续复制的内容原样粘入 TXT：
+
+```text
+抖音分享文字 https://v.douyin.com/aaa/
+抖音分享文字 https://v.douyin.com/bbb/ 又一条 https://v.douyin.com/ccc/
+
+YouTube: https://www.youtube.com/watch?v=...
+B站课程 BV1xxxxxxxxx
+```
+
+会拆成 5 个独立 BatchItem。
+
 ## v0.9.1：Long-lived Runtime
 
 批量执行开始复用真正昂贵的运行资源，但 Adapter 仍只负责单项内容：

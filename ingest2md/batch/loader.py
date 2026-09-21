@@ -3,9 +3,16 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from pathlib import Path
 
 from ingest2md.batch.models import BatchItem
+from ingest2md.urlutils import extract_references
+
+_PLAIN_WEB_REFERENCE_RE = re.compile(
+    r"^(?:www\.)?(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,63}"
+    r"(?::\d+)?(?:[/?#][^\s]*)?$"
+)
 
 
 def _tags(value) -> tuple[str, ...]:
@@ -21,7 +28,7 @@ def _tags(value) -> tuple[str, ...]:
 
 
 def _manifest_source(value: str, base_dir: Path) -> str:
-    source = str(value or "").strip()
+    source = str(value or "").strip().strip("\"'")
     if not source:
         return ""
     if "://" in source or "http://" in source or "https://" in source:
@@ -56,13 +63,46 @@ def load_batch(path: str | Path) -> list[BatchItem]:
     return items
 
 
+def _standalone_txt_reference(value: str, base_dir: Path) -> str:
+    """Keep useful one-reference-per-line inputs without treating prose as a URL."""
+    source = str(value or "").strip().strip("\"'")
+    if not source:
+        return ""
+
+    candidate = Path(source).expanduser()
+    if not candidate.is_absolute():
+        candidate = (base_dir / candidate).resolve()
+    try:
+        if candidate.is_file():
+            return str(candidate)
+    except (OSError, ValueError):
+        pass
+
+    if _PLAIN_WEB_REFERENCE_RE.fullmatch(source):
+        return source
+    return ""
+
+
 def _load_txt(path: Path) -> list[BatchItem]:
-    items = []
+    """Treat TXT as free-form pasted text, not as a strict one-line task table."""
+    items: list[BatchItem] = []
+    seen: set[str] = set()
     for line_number, raw in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
         value = raw.strip()
         if not value or value.startswith("#"):
             continue
-        items.append(BatchItem(_manifest_source(value, path.parent), line_number=line_number))
+
+        references = extract_references(value)
+        if not references:
+            standalone = _standalone_txt_reference(value, path.parent)
+            references = [standalone] if standalone else []
+
+        for reference in references:
+            source = _manifest_source(reference, path.parent)
+            if not source or source in seen:
+                continue
+            seen.add(source)
+            items.append(BatchItem(source, line_number=line_number))
     return items
 
 

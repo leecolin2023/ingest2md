@@ -1,3 +1,3 @@
 """ingest2md — internet/local content to lightweight LLM-readable Markdown."""
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"
