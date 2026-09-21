@@ -47,7 +47,7 @@ ingest2md "D:\Downloads\video.mp4" --limit-seconds 60 -o archive
 - 知乎：问题 + 尽可能多回答，合并成一个 Markdown；不是只保存当前回答。
 - 小红书：正文 + 当前可取得的笔记图片；默认不跑 OCR/Vision。
 - B站/YouTube：优先使用平台人工/自动字幕；有字幕直接保留原语言，没有字幕才进入 ASR。
-- 小宇宙：节目简介 / Show Notes + 公开音频转写；默认使用本地 SenseVoice，保留原语言。
+- 小宇宙：节目简介 / Show Notes + 公开音频转写；下载后先校验音轨/时长，Show Notes 时间点优先作为语义章节；默认使用本地 SenseVoice，保留原语言。
 - 抖音：用现有 Playwright 打开单视频/分享短链，只读取 DOM 已暴露的直接 http(s) 媒体地址，再复用现有 ASR；不实现私有签名。
 - 本地音视频：默认 `SenseVoiceBackend` 本地转写；也可显式选择 OpenAI-compatible ASR 或多模态 LLM audio。Backend 自己决定切片格式与时长。
 - 普通网页：HTTP 获取后优先用 Trafilatura 提取正文，必要时才用浏览器 fallback。
@@ -129,7 +129,7 @@ https://www.xiaoyuzhoufm.com/episode/<24位episode id>
 2. `og:title / og:description / og:audio`；
 3. `media.xyzcdn.net` 音频 URL 正则兜底。
 
-取得公开音频后，下载到临时目录并交给现有 `transcribe_audio()`。不要建立第二套播客转写框架。
+取得公开音频后先做 ffprobe 音轨/时长校验，再交给现有 `transcribe_audio()`。不要建立第二套播客转写框架。
 
 最终正文应保持：
 
