@@ -9,12 +9,13 @@ from pathlib import Path
 
 from ingest2md.config import Settings, load_settings
 from ingest2md.extractors.video import attach_video_description, retain_media
+from ingest2md.identity import SourceIdentity
 from ingest2md.media import bilibili as source
 from ingest2md.media.subtitles import fetch_yt_dlp_subtitles
 from ingest2md.model import Document
 from ingest2md.transcription.service import transcribe_audio
 from ingest2md.transcription.subtitles import subtitles_to_transcript
-from ingest2md.transcription.writers import render_markdown
+from ingest2md.transcription.presentation import present_transcript
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,11 @@ class BilibiliExtractor:
     def match(self, url: str) -> bool:
         return host_of(url) in _BILIBILI_HOSTS or bool(source.BV_RE.fullmatch(url))
 
+    async def identity(self, url: str) -> SourceIdentity:
+        bvid, part = await asyncio.to_thread(source.resolve_video, url)
+        source_id = f"{bvid}_p{part}"
+        return SourceIdentity(f"bilibili:{source_id}", "bilibili", source_id)
+
     async def extract(self, url: str, output_dir: Path) -> Document:
         return await asyncio.to_thread(self._extract, url, output_dir)
 
@@ -48,6 +54,14 @@ class BilibiliExtractor:
             raise ValueError(f"Cookie 文件不存在: {cookies_file}")
 
         bvid, part = source.resolve_video(url)
+        source_id = f"{bvid}_p{part}"
+        cache_key = f"bilibili:{source_id}"
+        cache = (
+            self.runtime.media_cache
+            if self.runtime is not None and settings.media_cache_enabled
+            else None
+        )
+        cached_audio = cache.get(cache_key) if cache is not None else None
         meta = source.fetch_meta(bvid, part)
         with tempfile.TemporaryDirectory(prefix="ingest2md-bili-") as temp:
             work = Path(temp)
@@ -63,10 +77,21 @@ class BilibiliExtractor:
                 transcript = subtitles_to_transcript(track, settings)
                 acquisition = f"平台字幕（{track.kind}, {track.language}）"
                 if settings.keep_audio:
-                    audio_path = source.download_audio(bvid, temp, cookies_file, part)
+                    if cached_audio is not None:
+                        audio_path = str(cached_audio)
+                    else:
+                        audio_path = source.download_audio(bvid, temp, cookies_file, part)
+                        if cache is not None:
+                            audio_path = str(cache.store(cache_key, audio_path))
             else:
                 logger.info("未找到可用字幕；下载 Bilibili 音频并使用 %s ASR", settings.asr_backend)
-                audio_path = source.download_audio(bvid, temp, cookies_file, part)
+                if cached_audio is not None:
+                    audio_path = str(cached_audio)
+                    logger.info("Bilibili：复用上次失败任务留下的媒体缓存")
+                else:
+                    audio_path = source.download_audio(bvid, temp, cookies_file, part)
+                    if cache is not None:
+                        audio_path = str(cache.store(cache_key, audio_path))
                 transcript = (
                     transcribe_audio(audio_path, work, settings, backend=self.runtime.asr_backend)
                     if self.runtime is not None
@@ -87,9 +112,9 @@ class BilibiliExtractor:
                     ("语言", transcript.language or "原语言"),
                     ("时间戳精度", transcript.timestamp_precision),
                 ],
-                body_md=render_markdown(transcript, window_seconds=settings.transcript_window_seconds),
+                body_md=present_transcript(transcript, settings),
                 transcript=transcript,
-                source_id=f"{bvid}_p{part}",
+                source_id=source_id,
                 source_type="bilibili",
             )
             attach_video_description(doc, meta.get("desc", ""))
