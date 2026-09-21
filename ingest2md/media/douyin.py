@@ -11,7 +11,7 @@ import asyncio
 import re
 from urllib.parse import urljoin, urlparse
 
-from ingest2md.browser import load_netscape_cookies, launch_chromium
+from ingest2md.browser import browser_context, load_netscape_cookies
 from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.urlutils import host_of
 
@@ -129,139 +129,136 @@ def normalize_page_snapshot(snapshot: dict, final_url: str) -> dict:
     }
 
 
-async def resolve_video_page(url: str, cookies_file: str = "") -> dict:
+async def resolve_video_page(
+    url: str,
+    cookies_file: str = "",
+    browser_runtime=None,
+) -> dict:
     """Open one Douyin page and return browser-resolved media metadata."""
-    from playwright.async_api import async_playwright
+    async with browser_context(
+        browser_runtime,
+        user_agent=DEFAULT_USER_AGENT,
+        locale="zh-CN",
+    ) as context:
+        if cookies_file:
+            cookies = load_netscape_cookies(cookies_file, "douyin.com")
+            if cookies:
+                await context.add_cookies(cookies)
 
-    async with async_playwright() as p:
-        browser = await launch_chromium(p, headless=True)
-        context = await browser.new_context(
-            user_agent=DEFAULT_USER_AGENT,
-            locale="zh-CN",
-        )
-        try:
-            if cookies_file:
-                cookies = load_netscape_cookies(cookies_file, "douyin.com")
-                if cookies:
-                    await context.add_cookies(cookies)
+        page = await context.new_page()
+        detail_snapshots: list[dict] = []
+        response_tasks: set[asyncio.Task] = set()
+        detail_ready = asyncio.Event()
 
-            page = await context.new_page()
-            detail_snapshots: list[dict] = []
-            response_tasks: set[asyncio.Task] = set()
-            detail_ready = asyncio.Event()
-
-            async def capture_detail(response):
-                if "/aweme/v1/web/aweme/detail/" not in response.url or response.status >= 400:
-                    return
-                try:
-                    detail = snapshot_from_aweme_detail(await response.json())
-                    if detail.get("media_candidates"):
-                        detail_snapshots.append(detail)
-                        detail_ready.set()
-                except Exception:
-                    return
-
-            def schedule_detail_capture(response):
-                task = asyncio.create_task(capture_detail(response))
-                response_tasks.add(task)
-                task.add_done_callback(response_tasks.discard)
-
-            page.on("response", schedule_detail_capture)
+        async def capture_detail(response):
+            if "/aweme/v1/web/aweme/detail/" not in response.url or response.status >= 400:
+                return
             try:
-                response = await page.goto(
-                    url,
-                    wait_until="domcontentloaded",
-                    timeout=45_000,
-                )
-            except Exception as exc:
-                raise RuntimeError(f"抖音页面访问失败: {exc}") from exc
-
-            if response and response.status >= 400:
-                raise RuntimeError(f"抖音页面访问失败: HTTP {response.status}")
-
-            await page.wait_for_timeout(1800)
-            try:
-                await page.wait_for_function(
-                    r"""() => {
-                        const videos = Array.from(document.querySelectorAll('video'));
-                        const urls = videos.flatMap(v => [v.currentSrc, v.src,
-                          ...Array.from(v.querySelectorAll('source')).map(x => x.src)]);
-                        return urls.some(u => u && /^https?:\/\//i.test(u));
-                    }""",
-                    timeout=10_000,
-                )
+                detail = snapshot_from_aweme_detail(await response.json())
+                if detail.get("media_candidates"):
+                    detail_snapshots.append(detail)
+                    detail_ready.set()
             except Exception:
-                # Keep going: the final snapshot may still expose src/source attrs,
-                # or it may tell us that only a blob URL/login wall is visible.
+                return
+
+        def schedule_detail_capture(response):
+            task = asyncio.create_task(capture_detail(response))
+            response_tasks.add(task)
+            task.add_done_callback(response_tasks.discard)
+
+        page.on("response", schedule_detail_capture)
+        try:
+            response = await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=45_000,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"抖音页面访问失败: {exc}") from exc
+
+        if response and response.status >= 400:
+            raise RuntimeError(f"抖音页面访问失败: HTTP {response.status}")
+
+        await page.wait_for_timeout(1800)
+        try:
+            await page.wait_for_function(
+                r"""() => {
+                    const videos = Array.from(document.querySelectorAll('video'));
+                    const urls = videos.flatMap(v => [v.currentSrc, v.src,
+                      ...Array.from(v.querySelectorAll('source')).map(x => x.src)]);
+                    return urls.some(u => u && /^https?:\/\//i.test(u));
+                }""",
+                timeout=10_000,
+            )
+        except Exception:
+            # Keep going: the final snapshot may still expose src/source attrs,
+            # or it may tell us that only a blob URL/login wall is visible.
+            pass
+
+        # A generic placeholder video can appear before the signed detail
+        # response. Give the browser response path a short preference window
+        # instead of immediately accepting that first DOM URL.
+        if not detail_ready.is_set():
+            try:
+                await asyncio.wait_for(detail_ready.wait(), timeout=10)
+            except TimeoutError:
                 pass
 
-            # A generic placeholder video can appear before the signed detail
-            # response. Give the browser response path a short preference window
-            # instead of immediately accepting that first DOM URL.
-            if not detail_ready.is_set():
-                try:
-                    await asyncio.wait_for(detail_ready.wait(), timeout=10)
-                except TimeoutError:
-                    pass
+        snapshot = await page.evaluate(
+            """() => {
+                const meta = (selector) =>
+                    document.querySelector(selector)?.getAttribute('content') || '';
+                const firstText = (selectors) => {
+                    for (const selector of selectors) {
+                        const node = document.querySelector(selector);
+                        const text = (node?.textContent || '').trim();
+                        if (text) return text;
+                    }
+                    return '';
+                };
+                return {
+                    videos: Array.from(document.querySelectorAll('video')).map(v => ({
+                        current_src: v.currentSrc || '',
+                        src: v.src || '',
+                        sources: Array.from(v.querySelectorAll('source'))
+                            .map(x => x.src || x.getAttribute('src') || '').filter(Boolean),
+                        duration: Number.isFinite(v.duration) ? v.duration : 0,
+                        ready_state: v.readyState
+                    })),
+                    title: meta('meta[property="og:title"]') ||
+                           meta('meta[name="twitter:title"]') ||
+                           document.title || '',
+                    description: meta('meta[property="og:description"]') ||
+                                 meta('meta[name="description"]') || '',
+                    author: firstText([
+                        '[data-e2e="video-author-name"]',
+                        '[data-e2e="author-name"]',
+                        '.account-name',
+                        '.author-name'
+                    ]),
+                    canonical_url: document.querySelector('link[rel="canonical"]')?.href || ''
+                };
+            }"""
+        )
+        if response_tasks:
+            await asyncio.gather(*list(response_tasks), return_exceptions=True)
+        final_url = page.url
+        if detail_snapshots:
+            detail = detail_snapshots[-1]
+            detail["canonical_url"] = final_url
+            detail["videos"] = snapshot.get("videos") or []
+            snapshot = {**snapshot, **detail}
+        meta = normalize_page_snapshot(snapshot or {}, final_url)
 
-            snapshot = await page.evaluate(
-                """() => {
-                    const meta = (selector) =>
-                        document.querySelector(selector)?.getAttribute('content') || '';
-                    const firstText = (selectors) => {
-                        for (const selector of selectors) {
-                            const node = document.querySelector(selector);
-                            const text = (node?.textContent || '').trim();
-                            if (text) return text;
-                        }
-                        return '';
-                    };
-                    return {
-                        videos: Array.from(document.querySelectorAll('video')).map(v => ({
-                            current_src: v.currentSrc || '',
-                            src: v.src || '',
-                            sources: Array.from(v.querySelectorAll('source'))
-                                .map(x => x.src || x.getAttribute('src') || '').filter(Boolean),
-                            duration: Number.isFinite(v.duration) ? v.duration : 0,
-                            ready_state: v.readyState
-                        })),
-                        title: meta('meta[property="og:title"]') ||
-                               meta('meta[name="twitter:title"]') ||
-                               document.title || '',
-                        description: meta('meta[property="og:description"]') ||
-                                     meta('meta[name="description"]') || '',
-                        author: firstText([
-                            '[data-e2e="video-author-name"]',
-                            '[data-e2e="author-name"]',
-                            '.account-name',
-                            '.author-name'
-                        ]),
-                        canonical_url: document.querySelector('link[rel="canonical"]')?.href || ''
-                    };
-                }"""
+        browser_cookies = await context.cookies()
+        if browser_cookies:
+            meta["cookie_header"] = "; ".join(
+                f"{item['name']}={item['value']}"
+                for item in browser_cookies
+                if item.get("name") and item.get("value") is not None
             )
-            if response_tasks:
-                await asyncio.gather(*list(response_tasks), return_exceptions=True)
-            final_url = page.url
-            if detail_snapshots:
-                detail = detail_snapshots[-1]
-                detail["canonical_url"] = final_url
-                detail["videos"] = snapshot.get("videos") or []
-                snapshot = {**snapshot, **detail}
-            meta = normalize_page_snapshot(snapshot or {}, final_url)
-
-            browser_cookies = await context.cookies()
-            if browser_cookies:
-                meta["cookie_header"] = "; ".join(
-                    f"{item['name']}={item['value']}"
-                    for item in browser_cookies
-                    if item.get("name") and item.get("value") is not None
-                )
-            else:
-                meta["cookie_header"] = ""
-        finally:
-            await browser.close()
-
+        else:
+            meta["cookie_header"] = ""
     if not meta["media_url"]:
         reason = "页面只暴露 blob 媒体地址" if meta.get("saw_blob") else "页面 DOM 中没有直接媒体地址"
         cookie_hint = (
