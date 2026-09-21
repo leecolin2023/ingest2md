@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ingest2md.browser import BrowserRuntime
+from ingest2md.cache import MediaCache
 from ingest2md.config import Settings
 from ingest2md.transcription.service import ASRBackend, create_asr_backend
 
@@ -17,6 +18,7 @@ class RuntimeContext:
     output_dir: Path | None = None
     _asr_backend: ASRBackend | None = field(default=None, init=False, repr=False)
     _browser: BrowserRuntime | None = field(default=None, init=False, repr=False)
+    _media_cache: MediaCache | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         if self.output_dir is None:
@@ -29,6 +31,17 @@ class RuntimeContext:
         if self._asr_backend is None:
             self._asr_backend = create_asr_backend(self.settings)
         return self._asr_backend
+
+    @property
+    def media_cache(self) -> MediaCache:
+        if self._media_cache is None:
+            root = (
+                Path(self.settings.media_cache_dir).expanduser().resolve()
+                if self.settings.media_cache_dir
+                else self.output_dir / ".cache" / "media"
+            )
+            self._media_cache = MediaCache(root)
+        return self._media_cache
 
     @property
     def browser(self) -> BrowserRuntime:
