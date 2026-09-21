@@ -18,11 +18,12 @@ v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认�
 
 - 支持 `v.douyin.com` 分享短链和 `douyin.com` 单视频页面；
 - 使用现有 Playwright 打开真实页面并执行平台自身 JavaScript；
-- 只读取 DOM 中已经暴露的 `video.currentSrc / video.src / source[src]` 直接 `http(s)` 媒体地址；
+- 优先读取浏览器已生成签名的详情响应中的音视频地址，回退到 DOM 暴露的直接 `http(s)` 地址；
 - 可选加载 Netscape 格式抖音 Cookie；
-- 下载视频后直接复用现有 ASR backend，默认 SenseVoice 本地转写；
+- 逐个下载候选媒体并校验音轨和时长，避免把页面占位动画交给 ASR；
+- 校验通过后复用现有 ASR backend，默认 SenseVoice 本地转写；
 - 如果页面只暴露 `blob:`、登录墙或没有直接媒体地址，会明确提示 Cookie / 本地文件 fallback；
-- 不实现 `a_bogus` / `X-Bogus`、私有 API、DouK Sidecar、主页/合集/评论/直播或“无水印”保证。
+- 不实现 `a_bogus` / `X-Bogus`，也不主动调用抖音私有详情 API；只读取真实浏览器会话已经产生的详情响应。仍不接 DouK Sidecar、主页/合集/评论/直播或“无水印”保证。
 
 ## v0.8.3：SenseVoice 本地性能优化
 
@@ -97,7 +98,7 @@ v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认�
 | **小宇宙** | **✅ v0.6** | Show Notes + 播客转写 | 单个 Markdown |
 | **本地音视频** | **✅ v0.8 Local-first** | 本地媒体 → 默认 SenseVoice 本地转写 → 原语言 | 单个 Markdown |
 | 普通网页 | ✅ | 主要正文 | 单个 Markdown |
-| 抖音 | ✅ 轻量 | 单视频/分享短链 → 浏览器 DOM 媒体地址 → ASR | 单个 Markdown |
+| 抖音 | ✅ 轻量 | 单视频/分享短链 → 浏览器详情响应/DOM 媒体地址 → ASR | 单个 Markdown |
 | 微信视频号 | ⏸ | 自动识别；媒体下载暂缓 | 明确提示改走本地文件 |
 
 知乎问题 URL 和某个回答 URL 都会按“问题导向”处理：定位到所属问题，把当前可获取的回答尽量收进同一个 Markdown。
@@ -218,7 +219,7 @@ ingest2md "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e" -o arc
 ingest2md "./meeting.mp3" -o archive
 ```
 
-## 抖音单视频：浏览器 DOM 轻量采集
+## 抖音单视频：浏览器轻量采集
 
 支持：
 
@@ -237,11 +238,13 @@ Router → DouyinExtractor
  ↓
 Playwright 打开真实页面并跟随短链跳转
  ↓
-读取 video.currentSrc / video.src / source[src]
+读取浏览器已生成签名的详情响应
  ↓
-得到直接 http(s) 媒体地址
+回退读取 video.currentSrc / video.src / source[src]
  ↓
-带 Referer / 当前浏览器 Cookie 下载视频
+得到音视频候选地址并逐个下载
+ ↓
+用 ffprobe 校验音轨和时长
  ↓
 复用 transcribe_audio()
  ↓
@@ -254,12 +257,12 @@ Markdown
 ingest2md "<抖音URL>" --douyin-cookies-file douyin-cookies.txt
 ```
 
-第一版故意只处理页面已经暴露的直接媒体 URL。如果页面只提供 `blob:`、登录墙或没有可下载地址，会明确失败并建议：
+实现不自行生成平台签名，只消费真实浏览器会话已经取得的详情响应和 DOM 地址。如果浏览器详情响应不可用、页面只提供 `blob:` 或出现登录墙，会明确失败并建议：
 
 1. 更新/提供抖音登录 Cookie；
 2. 或手动下载视频后执行 `ingest2md "/path/to/douyin.mp4"`。
 
-项目**不实现** `a_bogus` / `X-Bogus`、私有 API 签名、DouK Sidecar、主页批量、合集、评论、直播或无水印承诺。
+项目**不自行实现** `a_bogus` / `X-Bogus` 签名，也不主动构造抖音私有详情 API 请求；只消费真实浏览器会话已经取得的详情响应。不提供 DouK Sidecar、主页批量、合集、评论、直播或无水印承诺。
 
 ## 微信视频号：仍只识别来源
 
@@ -598,7 +601,7 @@ v0.8 当前在原有覆盖上新增 Local-first ASR 回归，重点覆盖：
 
 - 知乎、小红书可能因登录态、反爬、页面结构调整而少抓或失败；项目目标是“快速可用”，不是保证全量。
 - 小宇宙依赖公开 episode 页面中可取得的音频 URL；如果平台未来移除公开 `__NEXT_DATA__` / `og:audio` / CDN 地址，需要调整解析器。
-- 抖音当前只支持单条公开视频/分享短链的浏览器 DOM 采集；如果页面只暴露 blob、登录墙或不提供直接媒体 URL，会失败并提示 Cookie/本地文件 fallback。项目不维护私有签名、复杂解密或专用 Sidecar。
+- 抖音当前只支持单条视频/分享短链的浏览器采集；优先消费浏览器已签名的详情响应，回退到 DOM 直接媒体地址。如果详情响应不可用且页面只暴露 blob 或登录墙，会提示 Cookie/本地文件 fallback。项目不自行生成私有签名，也不维护复杂解密或专用 Sidecar。
 - 微信视频号仍只识别来源，不自动获取媒体。
 - 本地媒体必须是实际存在的文件；不存在的“路径字符串”不会进入本地媒体通道。
 - 普通网页以 Trafilatura 为主，但复杂交互网站仍可能需要浏览器 fallback，且不承诺等同专业 crawler。

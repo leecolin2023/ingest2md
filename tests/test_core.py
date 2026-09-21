@@ -648,6 +648,54 @@ def test_douyin_snapshot_skips_blob_and_keeps_direct_media():
     assert meta["author"] == "Demo Author"
 
 
+def test_douyin_snapshot_collects_all_videos_and_prefers_detail_candidates():
+    from ingest2md.media.douyin import normalize_page_snapshot
+
+    meta = normalize_page_snapshot({
+        "media_candidates": ["https://media.example/full.mp4"],
+        "videos": [
+            {"current_src": "https://static.example/placeholder.mp4"},
+            {"current_src": "blob:https://www.douyin.com/real-player"},
+        ],
+        "canonical_url": "https://www.douyin.com/video/1234567890",
+    }, "https://www.douyin.com/video/1234567890")
+
+    assert meta["media_candidates"] == [
+        "https://media.example/full.mp4",
+        "https://static.example/placeholder.mp4",
+    ]
+    assert meta["media_url"] == "https://media.example/full.mp4"
+    assert meta["saw_blob"] is True
+
+
+def test_douyin_detail_snapshot_prefers_published_video_before_audio_fallback():
+    from ingest2md.media.douyin import snapshot_from_aweme_detail
+
+    snapshot = snapshot_from_aweme_detail({
+        "aweme_detail": {
+            "aweme_id": "1234567890",
+            "desc": "水果店故事",
+            "duration": 377418,
+            "author": {"nickname": "刨根问底说AI"},
+            "music": {
+                "duration": 377,
+                "play_url": {"url_list": ["https://media.example/audio.mp3"]},
+            },
+            "video": {
+                "play_addr_h264": {"url_list": ["https://media.example/video.mp4"]},
+            },
+        },
+    })
+
+    assert snapshot["video_id"] == "1234567890"
+    assert snapshot["author"] == "刨根问底说AI"
+    assert snapshot["duration"] == pytest.approx(377.418)
+    assert snapshot["media_candidates"] == [
+        "https://media.example/video.mp4",
+        "https://media.example/audio.mp3",
+    ]
+
+
 def test_douyin_extractor_reuses_browser_media_and_shared_asr(tmp_path: Path, monkeypatch):
     import ingest2md.extractors.douyin as douyin
     from ingest2md.transcription.model import Segment, TranscriptResult
@@ -684,8 +732,16 @@ def test_douyin_extractor_reuses_browser_media_and_shared_asr(tmp_path: Path, mo
 
     monkeypatch.setattr(douyin.source, "resolve_video_page", fake_resolve)
     monkeypatch.setattr(douyin, "download_url", fake_download)
+    monkeypatch.setattr(douyin, "probe_media_info", lambda path: {
+        "duration": 30,
+        "has_audio": True,
+        "has_video": True,
+    })
     monkeypatch.setattr(douyin, "transcribe_audio", fake_transcribe)
     monkeypatch.setattr(douyin, "retain_media", lambda *args, **kwargs: None)
+    async def inline_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+    monkeypatch.setattr(douyin.asyncio, "to_thread", inline_to_thread)
 
     cookie_file = tmp_path / "douyin.txt"
     cookie_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
@@ -708,6 +764,65 @@ def test_douyin_extractor_reuses_browser_media_and_shared_asr(tmp_path: Path, mo
     assert "测试简介" in doc.body_md
     assert "## 转写正文" in doc.body_md
     assert "测试转写" in doc.body_md
+
+
+def test_douyin_extractor_rejects_short_candidate_and_uses_next(tmp_path: Path, monkeypatch):
+    import ingest2md.extractors.douyin as douyin
+    from ingest2md.transcription.model import Segment, TranscriptResult
+
+    async def fake_resolve(url, cookies_file=""):
+        return {
+            "video_id": "1234567890",
+            "title": "候选校验",
+            "author": "",
+            "description": "",
+            "canonical_url": "https://www.douyin.com/video/1234567890",
+            "media_url": "https://media.example/placeholder.mp4",
+            "media_candidates": [
+                "https://media.example/placeholder.mp4",
+                "https://media.example/full.mp4",
+            ],
+            "cookie_header": "",
+            "duration": 30.0,
+            "saw_blob": True,
+            "acquisition": "Playwright 浏览器详情响应",
+        }
+
+    downloads = []
+
+    def fake_download(url, target, **kwargs):
+        downloads.append(url)
+        target.write_bytes(b"fake")
+        return target
+
+    def fake_probe(path):
+        if "media_00" in path:
+            return {"duration": 2.6, "has_audio": True, "has_video": True}
+        return {"duration": 29.8, "has_audio": True, "has_video": True}
+
+    def fake_transcribe(path, work, settings):
+        assert "media_01" in path
+        return TranscriptResult([Segment(0, 30, "完整音频")], ["mock-asr"], 30)
+
+    async def inline_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(douyin.source, "resolve_video_page", fake_resolve)
+    monkeypatch.setattr(douyin, "download_url", fake_download)
+    monkeypatch.setattr(douyin, "probe_media_info", fake_probe)
+    monkeypatch.setattr(douyin, "transcribe_audio", fake_transcribe)
+    monkeypatch.setattr(douyin, "retain_media", lambda *args, **kwargs: None)
+    monkeypatch.setattr(douyin.asyncio, "to_thread", inline_to_thread)
+
+    doc = asyncio.run(douyin.DouyinExtractor(Settings(output_dir=str(tmp_path))).extract(
+        "https://v.douyin.com/demo/", tmp_path
+    ))
+
+    assert downloads == [
+        "https://media.example/placeholder.mp4",
+        "https://media.example/full.mp4",
+    ]
+    assert "完整音频" in doc.body_md
 
 
 def test_douyin_cookie_setting_is_loaded_relative_to_config(tmp_path: Path):
