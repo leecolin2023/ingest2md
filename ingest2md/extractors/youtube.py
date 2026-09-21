@@ -84,7 +84,7 @@ class YouTubeExtractor:
                 source_id=meta["id"],
                 source_type="youtube",
                 transcript=transcript,
-                body_md=render_markdown(transcript),
+                body_md=render_markdown(transcript, window_seconds=settings.transcript_window_seconds),
                 metadata=[
                     ("频道", meta["uploader"]),
                     ("时长（秒）", str(meta["duration"])),
