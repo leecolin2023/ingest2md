@@ -51,7 +51,11 @@ class LocalMediaExtractor:
         media_kind = "本地音频" if path.suffix.lower() in AUDIO_EXTENSIONS else "本地视频"
         with tempfile.TemporaryDirectory(prefix="ingest2md-local-") as temp:
             work = Path(temp)
-            transcript = transcribe_audio(str(path), work, settings, backend=self.runtime.asr_backend if self.runtime else None)
+            transcript = (
+                    transcribe_audio(str(path), work, settings, backend=self.runtime.asr_backend)
+                    if self.runtime is not None
+                    else transcribe_audio(str(path), work, settings)
+                )
             try:
                 duration = probe_duration(str(path))
             except Exception:
