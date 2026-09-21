@@ -29,8 +29,9 @@ class DouyinExtractor:
         "如果页面只暴露 blob/登录墙则明确提示 Cookie 或本地文件 fallback",
     )
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, runtime=None):
         self.settings = settings
+        self.runtime = runtime
 
     def match(self, url: str) -> bool:
         return source.is_douyin_url(url)
@@ -40,7 +41,10 @@ class DouyinExtractor:
         cookie_file = settings.douyin_cookies_file or settings.cookies_file
 
         logger.info("抖音：使用浏览器页面解析公开媒体地址")
-        meta = await source.resolve_video_page(url, cookie_file)
+        meta = await source.resolve_video_page(
+            url, cookie_file,
+            browser_runtime=self.runtime.browser if self.runtime else None,
+        )
 
         with tempfile.TemporaryDirectory(prefix="ingest2md-douyin-") as temp:
             work = Path(temp)
@@ -109,6 +113,7 @@ class DouyinExtractor:
                 str(media_path),
                 work,
                 settings,
+                self.runtime.asr_backend if self.runtime else None,
             )
 
             metadata = [
