@@ -73,6 +73,39 @@ def test_v011_task_store_upserts_batch_metadata(tmp_path: Path):
         store.close()
 
 
+def test_v011_metadata_change_reopens_successful_task(tmp_path: Path):
+    store = TaskStore(tmp_path / "state.sqlite3")
+    settings = Settings(output_dir=str(tmp_path))
+    fingerprint = config_fingerprint(settings)
+    output = tmp_path / "one.md"
+    output.write_text("one", encoding="utf-8")
+    try:
+        task_id = store.register(
+            [BatchItem("https://example.com/a", name="旧名称", tags=("old",))],
+            fingerprint,
+        )[0]
+        result = IngestionResult(
+            "https://example.com/a", "https://example.com/a", "Fake",
+            "web", "1", "one", output, "web:1",
+            Document(
+                title="one", source_url="https://example.com/a",
+                source_type="web", source_id="1", body_md="one",
+            ),
+        )
+        store.mark_success(task_id, result)
+
+        store.register(
+            [BatchItem("https://example.com/a", name="新名称", tags=("new",))],
+            fingerprint,
+        )
+        row = store.db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        assert row["status"] == "pending"
+        assert row["name"] == "新名称"
+        assert '"new"' in row["tags_json"]
+    finally:
+        store.close()
+
+
 def test_v011_canonical_identity_finds_completed_duplicate(tmp_path: Path):
     store = TaskStore(tmp_path / "state.sqlite3")
     settings = Settings(output_dir=str(tmp_path))
