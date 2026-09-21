@@ -202,7 +202,7 @@ ingest2md batch sources.jsonl -o output/batch --resume --retry-failed
 
 支持：
 
-- TXT：每行一个 Content Reference；
+- TXT：自由粘贴文本。自动提取全部 http/https URL 与 BV 号；多个链接可位于同一行；独占一行的本地文件路径/裸域名继续兼容；无引用的普通说明文字忽略；
 - CSV：至少包含 `source` 列，可选 `name,tags`；
 - JSONL：每行一个对象，必须有 `source`，可选 `name,tags`。
 
@@ -216,3 +216,17 @@ v0.9.1 的 batch 会复用一个 RuntimeContext：
 - 每条任务仍使用独立 BrowserContext，避免 Cookie/页面状态串任务。
 
 当前 batch 仍是串行执行。不要为了并发自行在外层同时启动多个 SenseVoice 任务；并发与资源 semaphore 留给后续统一调度。
+
+
+### TXT 自由文本扫描
+
+TXT 不是严格表格，而是低门槛的“随手粘贴区”。处理规则：
+
+1. 从每段文本中按出现顺序提取全部 `http/https` URL 和 Bilibili BV 号；
+2. 一行中出现多个链接时拆成多个 BatchItem；
+3. 精确重复引用只保留第一次；
+4. 没有 URL/BV 时，若整行是实际存在的本地文件，则保留为本地任务；
+5. 独占一行的裸域名（如 `example.com/article`）继续兼容；
+6. 其他普通说明文字忽略，不尝试补成伪 URL。
+
+不要把这个 Scanner 写成抖音正则；它属于 Content Reference 通用输入能力。CSV/JSONL 继续保持结构化字段语义。

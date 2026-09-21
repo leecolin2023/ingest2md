@@ -17,7 +17,7 @@ from ingest2md.model import Document, write_document
 from ingest2md.router import find_extractor
 from ingest2md.transcription.model import Segment, TranscriptResult
 from ingest2md.transcription.writers import render_markdown
-from ingest2md.urlutils import extract_first_url, normalize_reference, normalize_url
+from ingest2md.urlutils import extract_first_url, extract_references, normalize_reference, normalize_url
 
 
 SHARE_TEXT = """6.48 复制打开抖音，看看【星彩她爹讲三国（张睿）的作品】
@@ -1039,3 +1039,64 @@ def test_sensevoice_backend_reuses_loaded_model_across_files(tmp_path: Path, mon
     assert second.segments[0].text == "复用模型"
     assert init_count["value"] == 1
     assert call_count["value"] == 2
+
+
+
+def test_extract_references_scans_arbitrary_pasted_text():
+    text = (
+        "第一条 https://v.douyin.com/aaa111/ 其他文字 "
+        "第二条 https://example.com/article?q=1&x=2。 "
+        "B站 BV1xx411c7mD "
+        "重复 https://v.douyin.com/aaa111/"
+    )
+    assert extract_references(text) == [
+        "https://v.douyin.com/aaa111/",
+        "https://example.com/article?q=1&x=2",
+        "BV1xx411c7mD",
+    ]
+
+
+def test_batch_txt_splits_many_links_even_when_they_share_one_line(tmp_path: Path):
+    from ingest2md.batch.loader import load_batch
+
+    manifest = tmp_path / "mixed.txt"
+    manifest.write_text(
+        "6.15 复制打开抖音 https://v.douyin.com/first111/ 分享文字\n"
+        "\n"
+        "2.51 复制打开抖音 https://v.douyin.com/second22/\n"
+        "后面没有人工整理 "
+        "https://v.douyin.com/third333/ 一段文字 "
+        "https://v.douyin.com/fourth44/ 又一段 "
+        "https://example.com/article。\n",
+        encoding="utf-8",
+    )
+
+    items = load_batch(manifest)
+    assert [item.source for item in items] == [
+        "https://v.douyin.com/first111/",
+        "https://v.douyin.com/second22/",
+        "https://v.douyin.com/third333/",
+        "https://v.douyin.com/fourth44/",
+        "https://example.com/article",
+    ]
+    assert [item.line_number for item in items] == [1, 3, 4, 4, 4]
+
+
+def test_batch_txt_keeps_local_files_and_plain_domains_but_ignores_prose(tmp_path: Path):
+    from ingest2md.batch.loader import load_batch
+
+    local = tmp_path / "meeting.mp4"
+    local.write_bytes(b"fake")
+    manifest = tmp_path / "sources.txt"
+    manifest.write_text(
+        "meeting.mp4\n"
+        "example.com/article\n"
+        "这只是一段说明文字，没有任何链接，不应该变成任务\n",
+        encoding="utf-8",
+    )
+
+    items = load_batch(manifest)
+    assert [item.source for item in items] == [
+        str(local.resolve()),
+        "example.com/article",
+    ]

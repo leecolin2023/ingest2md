@@ -84,7 +84,7 @@ def build_batch_parser() -> argparse.ArgumentParser:
         prog="ingest2md batch",
         description="批量处理 TXT / JSONL / CSV 中的内容引用，并用 SQLite 保存可恢复状态",
     )
-    parser.add_argument("manifest", help="批量任务文件：.txt / .jsonl / .csv")
+    parser.add_argument("manifest", help="批量任务文件：.txt 自由粘贴文本 / .jsonl / .csv")
     _add_runtime_arguments(parser)
     parser.add_argument("--resume", action="store_true",
                         help="沿用 SQLite 状态；成功任务自动跳过，中断中的任务恢复为 pending")
