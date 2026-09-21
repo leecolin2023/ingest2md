@@ -31,12 +31,16 @@ _BUILTIN_EXTRACTORS = [
 _REGISTERED_EXTRACTORS: list[Extractor] = []
 
 
-def get_extractors(settings=None) -> list[Extractor]:
+def get_extractors(settings=None, runtime=None) -> list[Extractor]:
     builtins = [
         extractor_type(settings) if accepts_settings else extractor_type()
         for extractor_type, accepts_settings in _BUILTIN_EXTRACTORS
     ]
-    return builtins + list(_REGISTERED_EXTRACTORS)
+    extractors = builtins + list(_REGISTERED_EXTRACTORS)
+    if runtime is not None:
+        for extractor in extractors:
+            setattr(extractor, "runtime", runtime)
+    return extractors
 
 
 def register(extractor: Extractor) -> None:
