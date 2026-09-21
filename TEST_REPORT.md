@@ -7,7 +7,7 @@
 GitHub Actions 在 Python 3.10 与 3.12 均通过：
 
 ```text
-64 passed
+67 passed
 ```
 
 验证链路：
@@ -22,10 +22,10 @@ ingest2md --help
 已验证的 GitHub Actions run：
 
 ```text
-35570669327
+35570929076
 ```
 
-其中 Python 3.12 为 `64 passed in 7.40s`，Python 3.10 同样完整通过安装、compileall、pytest 与 CLI smoke。
+其中 Python 3.12 为 `67 passed in 8.16s`，Python 3.10 同样完整通过安装、compileall、pytest 与 CLI smoke。
 
 ## v0.11 核心回归
 
@@ -39,7 +39,9 @@ ingest2md --help
 6. **媒体缓存**：失败恢复媒体缓存支持 store/get/discard，成功任务默认清理；
 7. **Presentation enhancer 边界**：LLM 可以修改 Markdown 展示文本，但原始 `TranscriptResult.segments` 不发生变化；
 8. **Batch status**：状态库可以汇总 success/duplicate/failed/pending/running、累计尝试次数和失败类型；
-9. **旧能力兼容**：v0.9.3 之前的 55 个回归仍全部通过。
+9. **Redirect identity**：Generic Web 保留 HTTP redirect 后的最终 URL，用于输出命名与提取后二次去重；本地文件仍保持“路径 + 大小 + mtime”身份；
+10. **真实网络异常分类**：除内置 `TimeoutError` 外，`ReadTimeout / timed out / server disconnected / connection reset` 等常见异常形态也会进入 retryable；
+11. **旧能力兼容**：v0.9.3 之前的 55 个回归仍全部通过。
 
 ## Online smoke corpus
 
@@ -55,7 +57,7 @@ python -m pytest tests_online -q
 
 因此：
 
-> **64 passed 代表工程正确性，不代表 64 个真实平台场景永远在线可用。**
+> **67 passed 代表工程正确性，不代表 64 个真实平台场景永远在线可用。**
 
 平台 Adapter 发生明显变化或发布大版本时，再运行 online smoke corpus，用于区分代码回归与平台行为变化。
 
