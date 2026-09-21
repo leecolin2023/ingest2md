@@ -136,6 +136,11 @@ def test_xiaoyuzhou_extractor_calls_shared_transcription(tmp_path: Path, monkeyp
         )
 
     monkeypatch.setattr(xyz, "download_url", fake_download)
+    monkeypatch.setattr(xyz, "probe_media_info", lambda path: {
+        "duration": 5580,
+        "has_audio": True,
+        "has_video": False,
+    })
     monkeypatch.setattr(xyz, "transcribe_audio", fake_transcribe)
 
     settings = Settings(output_dir=str(tmp_path))
@@ -177,6 +182,97 @@ def test_video_time_headings_regression():
     md = render_markdown(transcript)
     assert "### 00:00–05:00" in md
     assert "### 05:00–10:01" in md
+
+
+
+
+def test_markdown_groups_low_level_asr_chunks():
+    transcript = TranscriptResult(
+        [
+            Segment(0, 30, "第一段"),
+            Segment(30, 60, "第二段"),
+            Segment(270, 300, "第十段"),
+            Segment(300, 330, "下一窗口"),
+        ],
+        ["m"],
+        330,
+    )
+    md = render_markdown(transcript, window_seconds=300)
+    assert md.count("### ") == 2
+    assert "### 00:00–05:00" in md
+    assert "第一段" in md and "第十段" in md
+    assert "### 05:00–05:30" in md
+    assert "下一窗口" in md
+
+
+def test_xiaoyuzhou_parses_shownote_chapters():
+    from ingest2md.extractors.xiaoyuzhou import parse_shownote_chapters
+
+    shownotes = """
+- 01:21 AI 落地
+- [15:16](https://example.com/t=916) AI 创业
+### 1:02:03 Agent 架构
+普通说明文字
+"""
+    assert parse_shownote_chapters(shownotes) == [
+        (81.0, "AI 落地"),
+        (916.0, "AI 创业"),
+        (3723.0, "Agent 架构"),
+    ]
+
+
+def test_chaptered_markdown_uses_semantic_titles():
+    from ingest2md.transcription.writers import render_chaptered_markdown
+
+    transcript = TranscriptResult(
+        [
+            Segment(0, 30, "开场内容"),
+            Segment(60, 90, "第一章之前"),
+            Segment(90, 120, "AI 落地正文"),
+            Segment(900, 930, "AI 创业正文"),
+        ],
+        ["m"],
+        930,
+    )
+    md = render_chaptered_markdown(
+        transcript,
+        [(81, "AI 落地"), (916, "AI 创业")],
+        window_seconds=300,
+    )
+    assert "### 00:00 开场" in md
+    assert "### 01:21 AI 落地" in md
+    assert "### 15:16 AI 创业" in md
+    assert "AI 落地正文" in md
+    assert "AI 创业正文" in md
+
+
+def test_xiaoyuzhou_rejects_truncated_audio_before_asr(tmp_path: Path, monkeypatch):
+    import ingest2md.extractors.xiaoyuzhou as xyz
+
+    monkeypatch.setattr(xyz, "fetch_episode_page", lambda url: NEXT_DATA_HTML)
+
+    def fake_download(url, target, **kwargs):
+        target.write_bytes(b"fake")
+        return target
+
+    monkeypatch.setattr(xyz, "download_url", fake_download)
+    monkeypatch.setattr(xyz, "probe_media_info", lambda path: {
+        "duration": 120,
+        "has_audio": True,
+        "has_video": False,
+    })
+    monkeypatch.setattr(
+        xyz, "transcribe_audio",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("truncated podcast must fail before ASR")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="明显不完整"):
+        asyncio.run(XiaoyuzhouExtractor(Settings(output_dir=str(tmp_path))).extract(
+            "https://www.xiaoyuzhoufm.com/episode/6aa127229d3264778166855e",
+            tmp_path,
+        ))
 
 
 def test_netscape_cookie_parser_regression(tmp_path: Path):
