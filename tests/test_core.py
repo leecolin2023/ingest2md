@@ -229,7 +229,7 @@ def test_chaptered_markdown_uses_semantic_titles():
             Segment(0, 30, "开场内容"),
             Segment(60, 90, "第一章之前"),
             Segment(90, 120, "AI 落地正文"),
-            Segment(900, 930, "AI 创业正文"),
+            Segment(920, 930, "AI 创业正文"),
         ],
         ["m"],
         930,
