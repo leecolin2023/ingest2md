@@ -9,9 +9,50 @@ from ingest2md.batch.store import TaskStore
 from ingest2md.cache import MediaCache
 from ingest2md.config import Settings
 from ingest2md.engine import IngestionResult
+from ingest2md.identity import fallback_identity, identity_from_document
 from ingest2md.model import Document, write_document
 from ingest2md.transcription.model import Segment, TranscriptResult
 from ingest2md.transcription.presentation import present_transcript
+
+
+def test_v011_post_extract_identity_uses_final_network_url(tmp_path: Path):
+    doc = Document(
+        title="redirected",
+        source_url="https://canonical.example/article",
+        source_type="web",
+        body_md="body",
+    )
+    identity = identity_from_document(doc, "https://short.example/a")
+    assert identity == fallback_identity("https://canonical.example/article")
+
+    local = tmp_path / "meeting.mp4"
+    local.write_bytes(b"media")
+    local_doc = Document(
+        title="meeting",
+        source_url=local.as_uri(),
+        source_type="local_media",
+        body_md="body",
+    )
+    assert identity_from_document(local_doc, str(local)) == fallback_identity(str(local))
+
+
+def test_v011_generic_web_preserves_redirected_final_url(tmp_path: Path, monkeypatch):
+    import ingest2md.extractors.web as web_module
+
+    async def fake_fetch(_url):
+        html = (
+            "<html><head><title>Final</title></head><body><article><p>"
+            + ("正文" * 120)
+            + "</p></article></body></html>"
+        )
+        return html, "https://canonical.example/article"
+
+    monkeypatch.setattr(web_module, "_fetch_http", fake_fetch)
+    doc = asyncio.run(
+        web_module.GenericWebExtractor().extract("https://short.example/a", tmp_path)
+    )
+    assert doc.source_url == "https://canonical.example/article"
+    assert doc.title == "Final"
 
 
 def test_v011_same_title_different_web_sources_do_not_overwrite(tmp_path: Path):
