@@ -56,7 +56,11 @@ class IngestionEngine:
             request = IngestionRequest(request)
 
         reference = normalize_reference(request.source)
-        extractor = find_extractor(reference, settings=self.settings, runtime=self.runtime)
+        extractor = (
+            find_extractor(reference, settings=self.settings, runtime=self.runtime)
+            if self.runtime is not None
+            else find_extractor(reference, settings=self.settings)
+        )
         document = await extractor.extract(reference, self.output_dir)
         output_path = write_document(document, self.output_dir, self.settings.formats)
 
