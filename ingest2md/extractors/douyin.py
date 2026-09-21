@@ -41,9 +41,12 @@ class DouyinExtractor:
         cookie_file = settings.douyin_cookies_file or settings.cookies_file
 
         logger.info("抖音：使用浏览器页面解析公开媒体地址")
-        meta = await source.resolve_video_page(
-            url, cookie_file,
-            browser_runtime=self.runtime.browser if self.runtime else None,
+        meta = (
+            await source.resolve_video_page(
+                url, cookie_file, browser_runtime=self.runtime.browser,
+            )
+            if self.runtime is not None
+            else await source.resolve_video_page(url, cookie_file)
         )
 
         with tempfile.TemporaryDirectory(prefix="ingest2md-douyin-") as temp:
@@ -108,13 +111,21 @@ class DouyinExtractor:
                     f"抖音媒体候选均不可用于转写{blob_hint}。{detail}。"
                     "请更新 Cookie，或下载视频后走本地媒体通道。"
                 )
-            transcript = await asyncio.to_thread(
-                transcribe_audio,
-                str(media_path),
-                work,
-                settings,
-                self.runtime.asr_backend if self.runtime else None,
-            )
+            if self.runtime is not None:
+                transcript = await asyncio.to_thread(
+                    transcribe_audio,
+                    str(media_path),
+                    work,
+                    settings,
+                    self.runtime.asr_backend,
+                )
+            else:
+                transcript = await asyncio.to_thread(
+                    transcribe_audio,
+                    str(media_path),
+                    work,
+                    settings,
+                )
 
             metadata = [
                 ("来源", "抖音"),
