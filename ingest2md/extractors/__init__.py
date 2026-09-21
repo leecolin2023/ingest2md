@@ -14,7 +14,9 @@ from ingest2md.extractors.zhihu import ZhihuExtractor
 from ingest2md.extractors.xiaohongshu import XiaohongshuExtractor
 from ingest2md.extractors.web import GenericWebExtractor
 
-# One registry owns both ordering and Settings injection.
+# One registry owns ordering and constructor injection. Runtime-capable
+# extractors still work without RuntimeContext; they then use their legacy
+# per-item resources.
 _BUILTIN_EXTRACTORS = [
     (DeferredMediaExtractor, False),
     (DouyinExtractor, True),
@@ -26,20 +28,18 @@ _BUILTIN_EXTRACTORS = [
     (XiaoyuzhouExtractor, True),
     (ZhihuExtractor, True),
     (XiaohongshuExtractor, True),
-    (GenericWebExtractor, False),
+    (GenericWebExtractor, True),
 ]
 _REGISTERED_EXTRACTORS: list[Extractor] = []
 
 
-def get_extractors(settings=None) -> list[Extractor]:
+def get_extractors(settings=None, runtime=None) -> list[Extractor]:
     builtins = [
-        extractor_type(settings) if accepts_settings else extractor_type()
-        for extractor_type, accepts_settings in _BUILTIN_EXTRACTORS
+        extractor_type(settings, runtime) if uses_runtime else extractor_type()
+        for extractor_type, uses_runtime in _BUILTIN_EXTRACTORS
     ]
     return builtins + list(_REGISTERED_EXTRACTORS)
 
 
 def register(extractor: Extractor) -> None:
-    # Third-party registrations are appended for backwards compatibility.
-    # Callers that need to outrank Generic Web should own a custom registry.
     _REGISTERED_EXTRACTORS.append(extractor)

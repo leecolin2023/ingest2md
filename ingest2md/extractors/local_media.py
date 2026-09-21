@@ -28,8 +28,9 @@ class LocalMediaExtractor:
         "输出 portable Markdown",
     )
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, runtime=None):
         self.settings = settings
+        self.runtime = runtime
 
     def match(self, reference: str) -> bool:
         try:
@@ -50,7 +51,11 @@ class LocalMediaExtractor:
         media_kind = "本地音频" if path.suffix.lower() in AUDIO_EXTENSIONS else "本地视频"
         with tempfile.TemporaryDirectory(prefix="ingest2md-local-") as temp:
             work = Path(temp)
-            transcript = transcribe_audio(str(path), work, settings)
+            transcript = (
+                    transcribe_audio(str(path), work, settings, backend=self.runtime.asr_backend)
+                    if self.runtime is not None
+                    else transcribe_audio(str(path), work, settings)
+                )
             try:
                 duration = probe_duration(str(path))
             except Exception:

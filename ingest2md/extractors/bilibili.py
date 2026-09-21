@@ -31,8 +31,9 @@ class BilibiliExtractor:
         "无字幕时使用配置 ASR backend（默认 SenseVoice ONNX 本地）",
     )
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, runtime=None):
         self.settings = settings
+        self.runtime = runtime
 
     def match(self, url: str) -> bool:
         return host_of(url) in _BILIBILI_HOSTS or bool(source.BV_RE.fullmatch(url))
@@ -66,7 +67,11 @@ class BilibiliExtractor:
             else:
                 logger.info("未找到可用字幕；下载 Bilibili 音频并使用 %s ASR", settings.asr_backend)
                 audio_path = source.download_audio(bvid, temp, cookies_file, part)
-                transcript = transcribe_audio(audio_path, work, settings)
+                transcript = (
+                    transcribe_audio(audio_path, work, settings, backend=self.runtime.asr_backend)
+                    if self.runtime is not None
+                    else transcribe_audio(audio_path, work, settings)
+                )
                 acquisition = f"音频下载 + {settings.asr_backend} ASR fallback"
 
             doc = Document(

@@ -7,6 +7,7 @@ from pathlib import Path
 from ingest2md.config import Settings
 from ingest2md.model import Document, write_document
 from ingest2md.router import find_extractor, normalize_reference
+from ingest2md.runtime import RuntimeContext
 
 
 @dataclass(frozen=True)
@@ -32,12 +33,22 @@ class IngestionResult:
 class IngestionEngine:
     """Platform-agnostic execution of exactly one ingestion task."""
 
-    def __init__(self, settings: Settings, output_dir: Path | None = None):
+    def __init__(
+        self,
+        settings: Settings,
+        output_dir: Path | None = None,
+        runtime: RuntimeContext | None = None,
+    ):
         self.settings = settings
+        self.runtime = runtime
         self.output_dir = (
-            Path(output_dir).expanduser().resolve()
-            if output_dir is not None
-            else Path(settings.output_dir).expanduser().resolve()
+            runtime.output_dir
+            if runtime is not None
+            else (
+                Path(output_dir).expanduser().resolve()
+                if output_dir is not None
+                else Path(settings.output_dir).expanduser().resolve()
+            )
         )
 
     async def ingest_one(self, request: IngestionRequest | str) -> IngestionResult:
@@ -45,7 +56,11 @@ class IngestionEngine:
             request = IngestionRequest(request)
 
         reference = normalize_reference(request.source)
-        extractor = find_extractor(reference, settings=self.settings)
+        extractor = (
+            find_extractor(reference, settings=self.settings, runtime=self.runtime)
+            if self.runtime is not None
+            else find_extractor(reference, settings=self.settings)
+        )
         document = await extractor.extract(reference, self.output_dir)
         output_path = write_document(document, self.output_dir, self.settings.formats)
 

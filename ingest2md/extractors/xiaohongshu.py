@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
-from ingest2md.browser import load_netscape_cookies, launch_chromium
+from ingest2md.browser import browser_context, load_netscape_cookies
 from ingest2md.config import Settings, load_settings
 from ingest2md.htmlutils import clean_fragment, meta_content
 from ingest2md.netutils import DEFAULT_USER_AGENT
@@ -26,18 +26,20 @@ class XiaohongshuExtractor:
     name = "小红书笔记"
     description = "xiaohongshu.com / xhslink.com 笔记 → 正文 + 图片 → Markdown"
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, runtime=None):
         self.settings = settings
+        self.runtime = runtime
 
     def match(self, url: str) -> bool:
         return host_of(url) in _HOSTS
 
     async def extract(self, url: str, output_dir: Path) -> Document:
         settings = self.settings or load_settings()
-        from playwright.async_api import async_playwright
-        async with async_playwright() as p:
-            browser = await launch_chromium(p, headless=True)
-            context = await browser.new_context(user_agent=DEFAULT_USER_AGENT, locale="zh-CN")
+        async with browser_context(
+            self.runtime.browser if self.runtime else None,
+            user_agent=DEFAULT_USER_AGENT,
+            locale="zh-CN",
+        ) as context:
             cookie_file = settings.xiaohongshu_cookies_file or settings.cookies_file
             if cookie_file:
                 cookies = load_netscape_cookies(cookie_file, "xiaohongshu.com")
@@ -47,17 +49,14 @@ class XiaohongshuExtractor:
             try:
                 response = await page.goto(url, wait_until="domcontentloaded", timeout=35_000)
             except Exception as exc:
-                await browser.close()
                 raise RuntimeError(f"小红书页面访问失败: {exc}") from exc
             if response and response.status >= 400:
-                await browser.close()
                 raise RuntimeError(f"小红书页面访问失败: HTTP {response.status}")
             await page.wait_for_timeout(1800)
             html = await page.content()
             final_url = page.url
             title, author, body, image_urls = parse_note_page(html, final_url)
             if not body:
-                await browser.close()
                 raise RuntimeError("未能读取小红书笔记正文；可能需要登录 Cookie 或页面结构已变化")
             source_id = _note_id(final_url)
             doc = Document(title=title, source_url=final_url, source_id=source_id,
@@ -71,7 +70,6 @@ class XiaohongshuExtractor:
                 doc.body_md += "\n\n## 图片\n\n" + "\n\n".join(
                     f"![]({relative})" for relative in image_map.values()
                 )
-            await browser.close()
             return doc
 
 

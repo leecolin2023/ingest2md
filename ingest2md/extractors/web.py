@@ -13,7 +13,7 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
-from ingest2md.browser import launch_chromium
+from ingest2md.browser import browser_context
 from ingest2md.htmlutils import clean_fragment, meta_content
 from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.model import Document
@@ -31,6 +31,10 @@ class GenericWebExtractor:
         "正文不足时使用现有浏览器渲染后再次提取",
     )
 
+    def __init__(self, settings=None, runtime=None):
+        self.settings = settings
+        self.runtime = runtime
+
     def match(self, url: str) -> bool:
         return url.startswith(("http://", "https://")) and bool(host_of(url))
 
@@ -42,7 +46,7 @@ class GenericWebExtractor:
                 return doc
         except Exception as exc:
             logger.info("普通 HTTP 抓取未取得足够正文，尝试浏览器渲染: %s", exc)
-        html, final_url = await _fetch_browser(url)
+        html, final_url = await _fetch_browser(url, self.runtime.browser if self.runtime else None)
         return parse_web_page(html, final_url)
 
 
@@ -57,17 +61,17 @@ async def _fetch_http(url: str) -> str:
         return response.text
 
 
-async def _fetch_browser(url: str) -> tuple[str, str]:
-    from playwright.async_api import async_playwright
-    async with async_playwright() as p:
-        browser = await launch_chromium(p, headless=True)
-        context = await browser.new_context(user_agent=DEFAULT_USER_AGENT, locale="zh-CN")
+async def _fetch_browser(url: str, browser_runtime=None) -> tuple[str, str]:
+    async with browser_context(
+        browser_runtime,
+        user_agent=DEFAULT_USER_AGENT,
+        locale="zh-CN",
+    ) as context:
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         await page.wait_for_timeout(1200)
         html = await page.content()
         final_url = page.url
-        await browser.close()
     return html, final_url
 
 

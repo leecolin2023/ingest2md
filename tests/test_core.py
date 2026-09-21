@@ -614,9 +614,11 @@ def test_registry_injects_settings_without_cli_type_list():
     from ingest2md.extractors.youtube import YouTubeExtractor
 
     settings = Settings(asr_backend="llm")
-    extractors = get_extractors(settings)
+    runtime = object()
+    extractors = get_extractors(settings, runtime=runtime)
     youtube = next(item for item in extractors if isinstance(item, YouTubeExtractor))
     assert youtube.settings is settings
+    assert youtube.runtime is runtime
 
 
 def test_douyin_routes_before_deferred_media():
@@ -945,3 +947,95 @@ def test_batch_runner_serially_isolates_failures(tmp_path: Path):
         assert summary.failed == 1
     finally:
         store.close()
+
+
+
+def test_runtime_context_lazily_reuses_asr_backend(tmp_path: Path, monkeypatch):
+    import ingest2md.runtime as runtime_module
+
+    calls = []
+    backend = object()
+
+    def fake_factory(settings):
+        calls.append(settings.asr_backend)
+        return backend
+
+    monkeypatch.setattr(runtime_module, "create_asr_backend", fake_factory)
+    runtime = runtime_module.RuntimeContext(
+        Settings(output_dir=str(tmp_path), asr_backend="sensevoice")
+    )
+
+    assert runtime.asr_backend is backend
+    assert runtime.asr_backend is backend
+    assert calls == ["sensevoice"]
+
+
+def test_browser_context_reuses_runtime_but_closes_each_context():
+    from ingest2md.browser import browser_context
+
+    class FakeContext:
+        def __init__(self, tracker):
+            self.tracker = tracker
+        async def close(self):
+            self.tracker["closed"] += 1
+
+    class FakeBrowserRuntime:
+        def __init__(self):
+            self.tracker = {"created": 0, "closed": 0}
+        async def new_context(self, **kwargs):
+            self.tracker["created"] += 1
+            return FakeContext(self.tracker)
+
+    async def run():
+        runtime = FakeBrowserRuntime()
+        async with browser_context(runtime, locale="zh-CN"):
+            pass
+        async with browser_context(runtime, locale="zh-CN"):
+            pass
+        return runtime.tracker
+
+    assert asyncio.run(run()) == {"created": 2, "closed": 2}
+
+
+def test_sensevoice_backend_reuses_loaded_model_across_files(tmp_path: Path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import ingest2md.transcription.sensevoice as sv
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    chunk = tmp_path / "chunk.wav"
+    chunk.write_bytes(b"fake")
+    monkeypatch.setattr(
+        sv, "chunk_audio_wav",
+        lambda *args, **kwargs: [{"path": str(chunk), "start": 0.0, "end": 30.0}],
+    )
+
+    init_count = {"value": 0}
+    call_count = {"value": 0}
+
+    class FakeModel:
+        def __init__(self, path, batch_size=1, quantize=True):
+            init_count["value"] += 1
+        def __call__(self, paths, language="auto", use_itn=True):
+            call_count["value"] += 1
+            return ["<|zh|>复用模型"]
+
+    monkeypatch.setitem(sys.modules, "funasr_onnx", SimpleNamespace(SenseVoiceSmall=FakeModel))
+    monkeypatch.setitem(
+        sys.modules, "funasr_onnx.utils.postprocess_utils",
+        SimpleNamespace(rich_transcription_postprocess=lambda text: text.replace("<|zh|>", "")),
+    )
+
+    settings = Settings(
+        sensevoice_model_dir=str(model_dir),
+        sensevoice_batch_size=2,
+    )
+    backend = sv.SenseVoiceBackend()
+    first = backend.transcribe("first.mp3", tmp_path / "work1", settings)
+    second = backend.transcribe("second.mp3", tmp_path / "work2", settings)
+
+    assert first.segments[0].text == "复用模型"
+    assert second.segments[0].text == "复用模型"
+    assert init_count["value"] == 1
+    assert call_count["value"] == 2

@@ -32,8 +32,9 @@ class XiaoyuzhouExtractor:
     name = "小宇宙播客"
     description = "xiaoyuzhoufm.com/episode 单集 → Show Notes + 播客转写 Markdown"
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, runtime=None):
         self.settings = settings
+        self.runtime = runtime
 
     def match(self, url: str) -> bool:
         return host_of(url) in _HOSTS and bool(_EPISODE_RE.search(urlparse(url).path))
@@ -51,7 +52,11 @@ class XiaoyuzhouExtractor:
             work = Path(temp)
             suffix = _audio_suffix(meta["audio_url"])
             audio_path = download_url(meta["audio_url"], work / f"audio{suffix}")
-            transcript = transcribe_audio(str(audio_path), work, settings)
+            transcript = (
+                    transcribe_audio(str(audio_path), work, settings, backend=self.runtime.asr_backend)
+                    if self.runtime is not None
+                    else transcribe_audio(str(audio_path), work, settings)
+                )
 
             metadata = [("来源", "小宇宙")]
             if meta["podcast_title"]:

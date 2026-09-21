@@ -188,3 +188,31 @@ ingest2md "<Content Reference>" --explain
 - 对不稳定网站，优先返回可读的部分结果/清晰错误，不建设重型审计产物。
 - 微信视频号等 deferred 平台必须明确失败，不得悄悄降级成 Generic Web；抖音只在浏览器取得直接媒体 URL 时继续。
 - 详细安装、配置、边界见 `README.md`。
+
+
+## 批量处理
+
+当用户要长期处理多条来源时，不要在平台 Adapter 外手写循环，使用统一 batch 调度：
+
+```bash
+ingest2md batch sources.txt -o output/batch --resume
+ingest2md batch sources.csv -o output/batch --take 20
+ingest2md batch sources.jsonl -o output/batch --resume --retry-failed
+```
+
+支持：
+
+- TXT：每行一个 Content Reference；
+- CSV：至少包含 `source` 列，可选 `name,tags`；
+- JSONL：每行一个对象，必须有 `source`，可选 `name,tags`。
+
+批量任务状态保存在输出目录的 `.ingest2md-batch.sqlite3`。SQLite 只属于 batch 调度，不进入平台 Adapter。
+
+v0.9.1 的 batch 会复用一个 RuntimeContext：
+
+- 同一批次复用 ASR backend；
+- SenseVoice ONNX 模型只加载一次；
+- 需要浏览器的平台复用一个 Chromium 进程；
+- 每条任务仍使用独立 BrowserContext，避免 Cookie/页面状态串任务。
+
+当前 batch 仍是串行执行。不要为了并发自行在外层同时启动多个 SenseVoice 任务；并发与资源 semaphore 留给后续统一调度。

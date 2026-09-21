@@ -15,6 +15,7 @@ from ingest2md.engine import IngestionEngine, IngestionRequest
 from ingest2md.extractors.base import SourceUnavailableError
 from ingest2md.extractors.youtube import YouTubeExtractor
 from ingest2md.media import youtube as youtube_source
+from ingest2md.runtime import RuntimeContext
 from ingest2md.router import (
     UnsupportedURLError, explain_route, find_extractor, format_route_explanation, normalize_reference,
 )
@@ -155,8 +156,7 @@ def single_main(argv: list[str]) -> int:
             print(youtube_source.format_access_report(report))
             return EXIT_OK if report["ok"] else EXIT_FETCH_FAILED
 
-        engine = IngestionEngine(settings)
-        result = asyncio.run(engine.ingest_one(IngestionRequest(args.source)))
+        result, output_dir = asyncio.run(_run_single_ingestion(settings, args.source))
     except SourceUnavailableError as exc:
         print(exc, file=sys.stderr)
         return EXIT_UNSUPPORTED
@@ -172,11 +172,18 @@ def single_main(argv: list[str]) -> int:
             raise
         return EXIT_FETCH_FAILED
 
-    print(f"识别为 {result.source_name}，输出目录: {engine.output_dir}")
+    print(f"识别为 {result.source_name}，输出目录: {output_dir}")
     print(f"已保存: {result.output_path}")
     if result.document.image_map:
         print(f"已下载 {len(result.document.image_map)} 张图片到本地")
     return EXIT_OK
+
+
+async def _run_single_ingestion(settings, source: str):
+    async with RuntimeContext(settings) as runtime:
+        engine = IngestionEngine(settings, runtime=runtime)
+        result = await engine.ingest_one(IngestionRequest(source))
+        return result, engine.output_dir
 
 
 async def _run_batch(args) -> int:
@@ -185,23 +192,24 @@ async def _run_batch(args) -> int:
         raise ValueError("--take 必须是非负整数")
 
     items = load_batch(args.manifest)
-    engine = IngestionEngine(settings)
-    state_db = (
-        Path(args.state_db).expanduser().resolve()
-        if args.state_db
-        else engine.output_dir / ".ingest2md-batch.sqlite3"
-    )
-    store = TaskStore(state_db)
-    try:
-        runner = BatchRunner(engine, store)
-        summary = await runner.run(
-            items,
-            resume=args.resume,
-            take=args.take,
-            retry_failed=args.retry_failed,
+    async with RuntimeContext(settings) as runtime:
+        engine = IngestionEngine(settings, runtime=runtime)
+        state_db = (
+            Path(args.state_db).expanduser().resolve()
+            if args.state_db
+            else engine.output_dir / ".ingest2md-batch.sqlite3"
         )
-    finally:
-        store.close()
+        store = TaskStore(state_db)
+        try:
+            runner = BatchRunner(engine, store)
+            summary = await runner.run(
+                items,
+                resume=args.resume,
+                take=args.take,
+                retry_failed=args.retry_failed,
+            )
+        finally:
+            store.close()
 
     print(
         f"批量完成: 总任务 {summary.total} | 成功 {summary.success} | "

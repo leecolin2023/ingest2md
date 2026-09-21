@@ -1,4 +1,4 @@
-# ingest2md v0.8.4 Test Report
+# ingest2md v0.9.1 Test Report
 
 测试日期：2026-09-21
 
@@ -7,7 +7,7 @@
 GitHub Actions 在 Python 3.10 与 3.12 均通过：
 
 ```text
-38 passed
+48 passed
 ```
 
 执行链路：
@@ -19,53 +19,54 @@ python -m pytest -q
 ingest2md --help
 ```
 
-代码回归 CI run：
+PR CI run：
 
 ```text
-35545916051
+35555458967
 ```
 
-## v0.8.4 Douyin browser acquisition
+## v0.9.0 Batch Foundation
 
-本版把抖音从 DeferredMediaExtractor 中拆出，新增轻量单视频采集能力：
+- 单条执行核心抽到 `IngestionEngine.ingest_one()`；
+- legacy `ingest2md <source>` 保持兼容；
+- 新增 `ingest2md batch <manifest>`；
+- TXT / CSV / JSONL 统一加载为 BatchItem；
+- SQLite TaskStore 保存 `pending/running/success/failed`；
+- 支持 `--resume`、`--take`、`--retry-failed`；
+- 同一配置指纹下按规范化输入去重，成功后记录 canonical key；
+- v0.9.0 保持串行，不引入 worker/pipeline 框架。
 
-1. `v.douyin.com` 分享短链和 Douyin URL 路由到 `DouyinExtractor`；
-2. Playwright 打开真实页面并跟随平台跳转；
-3. 仅消费 DOM 已暴露的 `video.currentSrc / video.src / source[src]` 直接 `http(s)` 媒体 URL；
-4. 可选读取 Netscape 格式 `douyin_cookies_file`；
-5. 下载时复用当前页面 Referer / Cookie，再交给已有 `transcribe_audio()`；
-6. 默认继续使用 SenseVoice 本地 ASR；
-7. 页面仅暴露 `blob:`、登录墙或没有直接媒体地址时明确失败并提示 Cookie / 本地文件 fallback；
-8. 微信视频号仍保持 deferred，不掉入 Generic Web。
+## v0.9.1 Long-lived Runtime
 
-## 新增回归
+- RuntimeContext 与 SQLite TaskStore 分离：前者只管执行资源，后者只管 batch 状态；
+- 同一 RuntimeContext 懒加载并复用一个 ASR backend；
+- SenseVoiceBackend 缓存已初始化 ONNX 模型，多媒体任务不重复加载；
+- BrowserRuntime 复用一个 Playwright/Chromium 进程；
+- 每条浏览器任务仍建立独立 BrowserContext 并及时关闭；
+- Bilibili / YouTube / 小宇宙 / 本地媒体 / 抖音共享 ASR runtime；
+- 知乎 / 小红书 / 抖音 / Generic Web browser fallback 共享 Chromium runtime；
+- 没有 RuntimeContext 时继续走原有单项资源路径，保持 Adapter 独立可用。
 
-在 v0.8.3 的 34 项基础上新增 4 项：
+## 新增回归重点
 
-- 抖音分享短链必须路由到 `DouyinExtractor`，不再进入 DeferredMediaExtractor；
-- DOM snapshot 遇到 `blob:` 时能够跳过，并选择可直接下载的 http(s) source；
-- DouyinExtractor 能把浏览器解析出的媒体 URL、Referer、Cookie 交给下载器并复用共享 ASR；
-- `douyin_cookies_file` 能按 config.yaml 所在目录解析相对路径。
+- TXT / CSV / JSONL loader；
+- SQLite 去重、resume、retry-failed；
+- BatchRunner 单任务失败隔离；
+- IngestionEngine 单条核心；
+- RuntimeContext 的 ASR backend lazy reuse；
+- BrowserContext 在共享 BrowserRuntime 上逐任务创建并关闭；
+- SenseVoiceBackend 连续处理两个媒体时模型只初始化一次；
+- registry 能同时注入 Settings 与 Runtime。
 
-因此当前：
+## 当前边界
 
-```text
-38 passed
-```
+本版仍没有：
 
-## 明确保留的边界
+- task 并发；
+- fetch/asr 分阶段队列；
+- ASR/browser semaphore；
+- HTTP Client 全局连接池；
+- 平台限流器；
+- 复杂指数退避和 typed exception hierarchy。
 
-本版没有实现：
-
-- `a_bogus` / `X-Bogus` 或其他私有签名算法；
-- Douyin 私有 detail API client；
-- DouK/TikTokDownloader Sidecar；
-- 主页批量、合集、评论、直播；
-- 无水印保证；
-- Playwright network interception / blob 解码 fallback。
-
-这些能力只有在 DOM 轻量方案真实使用成功率不足、且收益明确时再考虑。
-
-## CI 边界
-
-基础 CI 不真正启动 Playwright 访问抖音，也不下载真实抖音媒体或 SenseVoice 模型。当前测试验证路由、DOM snapshot 选择、Cookie/Referer 传递、ASR pipeline 接续与既有功能回归。真实抖音可用率仍需用公开分享链接做端到端 smoke test。
+这些能力应在真实批量 workload 有数据后再决定，避免提前建设重型任务平台。
