@@ -12,6 +12,38 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.9.3：Podcast / Long-form Transcript
+
+这一版把长音频的“模型切片”与“最终阅读结构”正式分开，并优先增强小宇宙：
+
+- 小宇宙下载完整音频后先用 `ffprobe` 校验音轨和时长；无音轨、异常短或明显短于页面时长时，不再浪费 ASR；
+- 新增 `transcript_window_seconds=300`，控制最终 Markdown 的阅读窗口；SenseVoice 仍可保持 30 秒推理切片；
+- 通用 `render_markdown()` 会把底层 30 秒 segments 聚合成默认 5 分钟阅读块，不改变 TranscriptResult 原始时间信息；
+- 小宇宙 Show Notes 中能识别 `01:21` / `1:02:03` 等时间点时，会优先把它们作为语义章节组织转写；
+- Show Notes 没有可解析章节时，自动退回通用 5 分钟窗口；
+- SRT/JSON 仍基于原始 TranscriptResult，不会因为 Markdown 聚合而丢失底层 segment 时间信息。
+
+示例：
+
+```text
+SenseVoice:
+0–30s
+30–60s
+...
+
+↓ presentation
+
+Markdown:
+00:00–05:00
+05:00–10:00
+
+↓ 小宇宙若有 Show Notes 时间点
+
+01:21 AI 落地
+15:16 AI 创业
+1:02:03 Agent 架构
+```
+
 ## v0.9.2：Free-text Reference Scanner
 
 TXT 批量输入从“每行一个任务”升级为“自由粘贴文本扫描器”：
@@ -567,6 +599,7 @@ CLI 显式参数 > 对应环境变量 > config.yaml > 默认值
 | `--sensevoice-chunk-seconds` | `30`（允许 5–30） |
 | `--sensevoice-batch-size` | `2`（内存和 CPU 余量较大时可尝试 `4`） |
 | `--limit-seconds` | `0`，完整媒体 |
+| `--transcript-window-seconds` | `300`，Markdown 默认按 5 分钟阅读窗口组织 |
 | `--keep-audio` | `false` |
 | `--keep-chunks` | `false` |
 
