@@ -12,6 +12,33 @@
 
 v0.8 的音视频原则进一步收紧为：**字幕优先，本地转写默认可用，云端模型按需增强；没有任何付费 API，也应该能完成完整 ingestion。**
 
+## v0.9.0：Batch Foundation
+
+批量能力成为独立于平台的核心调度层，而不是某个平台 Adapter 的循环：
+
+- 新增 `IngestionEngine`，单条 CLI 与批量模式都调用同一个 `ingest_one()`；
+- 新增 `ingest2md batch <manifest>`，支持 TXT / JSONL / CSV；
+- SQLite 保存任务状态，支持 `--resume`、`--take`、`--retry-failed`；
+- 输入阶段按规范化引用去重，并记录抓取后的 `source_type + source_id` canonical key；
+- 配置指纹变化会产生新的任务版本；成功任务输出缺失时可在 resume 时重新进入 pending；
+- v0.9.0 故意保持串行，不引入 worker/pipeline 框架。
+
+示例：
+
+```bash
+ingest2md batch sources.txt --config config.yaml -o output/batch --resume
+ingest2md batch sources.csv -o output/batch --take 20
+ingest2md batch sources.jsonl -o output/batch --resume --retry-failed
+```
+
+JSONL 任务保持轻量：
+
+```json
+{"source":"https://v.douyin.com/xxx/","name":"AI视频01","tags":["AI","抖音"]}
+{"source":"BV1xxxxxxxxx","name":"B站课程"}
+{"source":"./meeting.mp4","name":"会议录像"}
+```
+
 ## v0.8.4：抖音单视频浏览器采集
 
 本版把抖音从“仅识别”升级为轻量可用的单视频 Adapter，但仍不维护私有签名：

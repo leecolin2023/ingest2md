@@ -832,3 +832,116 @@ def test_douyin_cookie_setting_is_loaded_relative_to_config(tmp_path: Path):
     config.write_text('douyin_cookies_file: "douyin.txt"\n', encoding="utf-8")
     settings = load_settings(str(config))
     assert settings.douyin_cookies_file == str(tmp_path / "douyin.txt")
+
+
+def test_batch_loader_supports_txt_csv_jsonl(tmp_path: Path):
+    from ingest2md.batch.loader import load_batch
+
+    txt = tmp_path / "sources.txt"
+    txt.write_text("# comment\nhttps://example.com/a\nBV1xx411c7mD\n", encoding="utf-8")
+    assert [item.source for item in load_batch(txt)] == [
+        "https://example.com/a", "BV1xx411c7mD",
+    ]
+
+    csv_file = tmp_path / "sources.csv"
+    csv_file.write_text(
+        "source,name,tags\nhttps://example.com/b,Article,\"web,ai\"\n",
+        encoding="utf-8",
+    )
+    csv_items = load_batch(csv_file)
+    assert csv_items[0].name == "Article"
+    assert csv_items[0].tags == ("web", "ai")
+
+    jsonl = tmp_path / "sources.jsonl"
+    jsonl.write_text(
+        '{"source":"https://example.com/c","name":"C","tags":["x","y"]}\n',
+        encoding="utf-8",
+    )
+    json_items = load_batch(jsonl)
+    assert json_items[0].name == "C"
+    assert json_items[0].tags == ("x", "y")
+
+
+def test_ingestion_engine_is_shared_single_item_core(tmp_path: Path, monkeypatch):
+    import ingest2md.engine as engine_module
+
+    class FakeExtractor:
+        name = "Fake"
+        async def extract(self, reference, output_dir):
+            return Document(
+                title="Batchable",
+                source_url=reference,
+                source_type="fake",
+                source_id="42",
+                body_md="body",
+            )
+
+    monkeypatch.setattr(engine_module, "find_extractor", lambda reference, settings=None: FakeExtractor())
+    settings = Settings(output_dir=str(tmp_path))
+    result = asyncio.run(engine_module.IngestionEngine(settings).ingest_one("https://example.com/x"))
+
+    assert result.source_name == "Fake"
+    assert result.canonical_key == "fake:42"
+    assert result.output_path.exists()
+    assert result.output_path.read_text(encoding="utf-8").startswith("# Batchable")
+
+
+def test_batch_store_resume_and_retry(tmp_path: Path):
+    from ingest2md.batch.models import BatchItem, config_fingerprint
+    from ingest2md.batch.store import TaskStore
+
+    settings = Settings(output_dir=str(tmp_path))
+    store = TaskStore(tmp_path / "state.sqlite3")
+    try:
+        ids = store.register(
+            [BatchItem("https://example.com/a"), BatchItem("https://example.com/a")],
+            config_fingerprint(settings),
+        )
+        assert len(ids) == 1
+
+        task_id = ids[0]
+        store.mark_running(task_id)
+        store.recover_running(ids)
+        assert len(store.pending(ids)) == 1
+
+        store.mark_failed(task_id, "timeout", "temporary")
+        assert store.summary(ids).failed == 1
+        store.retry_failed(ids)
+        assert store.summary(ids).pending == 1
+    finally:
+        store.close()
+
+
+def test_batch_runner_serially_isolates_failures(tmp_path: Path):
+    from ingest2md.batch.models import BatchItem
+    from ingest2md.batch.runner import BatchRunner
+    from ingest2md.batch.store import TaskStore
+    from ingest2md.engine import IngestionResult
+
+    class FakeEngine:
+        settings = Settings(output_dir=str(tmp_path))
+        async def ingest_one(self, request):
+            if request.source.endswith("/bad"):
+                raise TimeoutError("network timeout")
+            path = tmp_path / "ok.md"
+            path.write_text("ok", encoding="utf-8")
+            doc = Document(
+                title="ok", source_url=request.source,
+                source_type="web", source_id="1", body_md="ok",
+            )
+            return IngestionResult(
+                request.source, request.source, "Fake", "web", "1", "ok",
+                path, "web:1", doc,
+            )
+
+    store = TaskStore(tmp_path / "state.sqlite3")
+    try:
+        summary = asyncio.run(BatchRunner(FakeEngine(), store).run([
+            BatchItem("https://example.com/good"),
+            BatchItem("https://example.com/bad"),
+        ]))
+        assert summary.total == 2
+        assert summary.success == 1
+        assert summary.failed == 1
+    finally:
+        store.close()
