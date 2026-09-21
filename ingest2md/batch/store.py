@@ -78,6 +78,12 @@ class TaskStore:
                 ON CONFLICT(task_key, config_fingerprint) DO UPDATE SET
                     raw_source=excluded.raw_source,
                     normalized_source=excluded.normalized_source,
+                    status=CASE
+                        WHEN tasks.name<>excluded.name OR tasks.tags_json<>excluded.tags_json
+                        THEN 'pending' ELSE tasks.status END,
+                    stage=CASE
+                        WHEN tasks.name<>excluded.name OR tasks.tags_json<>excluded.tags_json
+                        THEN '' ELSE tasks.stage END,
                     name=excluded.name,
                     tags_json=excluded.tags_json,
                     updated_at=CURRENT_TIMESTAMP
