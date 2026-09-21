@@ -1054,6 +1054,9 @@ def test_extract_references_scans_arbitrary_pasted_text():
         "https://example.com/article?q=1&x=2",
         "BV1xx411c7mD",
     ]
+    assert extract_references(
+        "课程 https://www.bilibili.com/video/BV1xx411c7mD"
+    ) == ["https://www.bilibili.com/video/BV1xx411c7mD"]
 
 
 def test_batch_txt_splits_many_links_even_when_they_share_one_line(tmp_path: Path):
