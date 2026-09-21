@@ -1,6 +1,8 @@
 """Browser helpers for sites that need a real browser session."""
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from ingest2md.cookies import parse_netscape_cookie_file
@@ -43,3 +45,59 @@ async def launch_chromium(playwright, headless: bool = True):
         if system_browser:
             kwargs["executable_path"] = system_browser
     return await playwright.chromium.launch(**kwargs)
+
+
+
+class BrowserRuntime:
+    """Lazy shared Playwright/Chromium process; callers still isolate each task in a context."""
+
+    def __init__(self, headless: bool = True):
+        self.headless = headless
+        self._playwright = None
+        self._browser = None
+        self._lock = asyncio.Lock()
+
+    async def _ensure_browser(self):
+        if self._browser is not None:
+            return self._browser
+        async with self._lock:
+            if self._browser is None:
+                from playwright.async_api import async_playwright
+                self._playwright = await async_playwright().start()
+                self._browser = await launch_chromium(self._playwright, headless=self.headless)
+        return self._browser
+
+    async def new_context(self, **kwargs):
+        browser = await self._ensure_browser()
+        return await browser.new_context(**kwargs)
+
+    async def close(self) -> None:
+        browser, playwright = self._browser, self._playwright
+        self._browser = None
+        self._playwright = None
+        if browser is not None:
+            await browser.close()
+        if playwright is not None:
+            await playwright.stop()
+
+
+@asynccontextmanager
+async def browser_context(browser_runtime: BrowserRuntime | None = None, **kwargs):
+    """Create an isolated context, optionally reusing a long-lived Chromium process."""
+    if browser_runtime is not None:
+        context = await browser_runtime.new_context(**kwargs)
+        try:
+            yield context
+        finally:
+            await context.close()
+        return
+
+    from playwright.async_api import async_playwright
+    async with async_playwright() as playwright:
+        browser = await launch_chromium(playwright, headless=True)
+        context = await browser.new_context(**kwargs)
+        try:
+            yield context
+        finally:
+            await context.close()
+            await browser.close()

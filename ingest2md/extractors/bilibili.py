@@ -66,7 +66,12 @@ class BilibiliExtractor:
             else:
                 logger.info("未找到可用字幕；下载 Bilibili 音频并使用 %s ASR", settings.asr_backend)
                 audio_path = source.download_audio(bvid, temp, cookies_file, part)
-                transcript = transcribe_audio(audio_path, work, settings)
+                runtime = getattr(self, "runtime", None)
+                transcript = (
+                    transcribe_audio(audio_path, work, settings, backend=runtime.get_asr_backend())
+                    if runtime is not None
+                    else transcribe_audio(audio_path, work, settings)
+                )
                 acquisition = f"音频下载 + {settings.asr_backend} ASR fallback"
 
             doc = Document(

@@ -11,7 +11,7 @@ import asyncio
 import re
 from urllib.parse import urljoin, urlparse
 
-from ingest2md.browser import load_netscape_cookies, launch_chromium
+from ingest2md.browser import browser_context, load_netscape_cookies
 from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.urlutils import host_of
 
@@ -129,17 +129,13 @@ def normalize_page_snapshot(snapshot: dict, final_url: str) -> dict:
     }
 
 
-async def resolve_video_page(url: str, cookies_file: str = "") -> dict:
+async def resolve_video_page(url: str, cookies_file: str = "", browser_runtime=None) -> dict:
     """Open one Douyin page and return browser-resolved media metadata."""
-    from playwright.async_api import async_playwright
-
-    async with async_playwright() as p:
-        browser = await launch_chromium(p, headless=True)
-        context = await browser.new_context(
-            user_agent=DEFAULT_USER_AGENT,
-            locale="zh-CN",
-        )
-        try:
+    async with browser_context(
+        browser_runtime,
+        user_agent=DEFAULT_USER_AGENT,
+        locale="zh-CN",
+    ) as context:
             if cookies_file:
                 cookies = load_netscape_cookies(cookies_file, "douyin.com")
                 if cookies:
@@ -259,9 +255,6 @@ async def resolve_video_page(url: str, cookies_file: str = "") -> dict:
                 )
             else:
                 meta["cookie_header"] = ""
-        finally:
-            await browser.close()
-
     if not meta["media_url"]:
         reason = "页面只暴露 blob 媒体地址" if meta.get("saw_blob") else "页面 DOM 中没有直接媒体地址"
         cookie_hint = (

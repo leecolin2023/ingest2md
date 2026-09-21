@@ -89,6 +89,36 @@ def _batch_items(result, expected: int) -> list:
 class SenseVoiceBackend:
     name = "sensevoice"
 
+    def __init__(self):
+        self._model = None
+        self._postprocess = None
+        self._model_key = None
+
+    def _get_model(self, settings: Settings):
+        key = (
+            settings.sensevoice_model_dir,
+            settings.sensevoice_batch_size,
+            settings.sensevoice_quantize,
+        )
+        if self._model is not None and self._model_key == key:
+            return self._model, self._postprocess, False
+
+        model_dir = _resolve_model_dir(settings)
+        SenseVoiceSmall, postprocess = _import_runtime()
+        logger.info(
+            "加载本地 SenseVoiceSmall ONNX: %s (chunk=%ss, batch=%s, quantize=%s)",
+            model_dir, settings.sensevoice_chunk_seconds,
+            settings.sensevoice_batch_size, settings.sensevoice_quantize,
+        )
+        self._model = SenseVoiceSmall(
+            str(model_dir),
+            batch_size=settings.sensevoice_batch_size,
+            quantize=settings.sensevoice_quantize,
+        )
+        self._postprocess = postprocess
+        self._model_key = key
+        return self._model, self._postprocess, True
+
     @staticmethod
     def _run_model(model, audio_paths: list[str], language: str, use_itn: bool = True):
         """Prefer true list input; retain single-file fallbacks for older runtimes."""
@@ -137,19 +167,10 @@ class SenseVoiceBackend:
             raise ValueError("音频过短或没有可转写内容")
 
         setup_started = time.perf_counter()
-        model_dir = _resolve_model_dir(settings)
-        SenseVoiceSmall, postprocess = _import_runtime()
-        logger.info(
-            "加载本地 SenseVoiceSmall ONNX: %s (chunk=%ss, batch=%s, quantize=%s)",
-            model_dir, settings.sensevoice_chunk_seconds,
-            settings.sensevoice_batch_size, settings.sensevoice_quantize,
-        )
-        model = SenseVoiceSmall(
-            str(model_dir),
-            batch_size=settings.sensevoice_batch_size,
-            quantize=settings.sensevoice_quantize,
-        )
+        model, postprocess, loaded_now = self._get_model(settings)
         setup_seconds = time.perf_counter() - setup_started
+        if not loaded_now:
+            logger.info("复用已加载的 SenseVoiceSmall ONNX 模型")
 
         batch_size = max(1, settings.sensevoice_batch_size)
         batch_count = math.ceil(len(chunks) / batch_size)
