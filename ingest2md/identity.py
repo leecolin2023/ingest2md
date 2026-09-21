@@ -64,8 +64,17 @@ async def resolve_identity(extractor, reference: str) -> SourceIdentity:
 
 
 def identity_from_document(document, reference: str) -> SourceIdentity:
-    return identity_from_parts(
-        getattr(document, "source_type", ""),
-        getattr(document, "source_id", ""),
-        reference,
-    )
+    source_type = getattr(document, "source_type", "")
+    source_id = getattr(document, "source_id", "")
+    if source_type and source_id:
+        return identity_from_parts(source_type, source_id, reference)
+
+    # Local-file identity deliberately includes size + mtime so replacing a file
+    # at the same path is a new ingestion. Network sources instead use the final
+    # source URL after redirects when an adapter exposes it.
+    try:
+        if Path(reference).expanduser().is_file():
+            return fallback_identity(reference)
+    except (OSError, ValueError):
+        pass
+    return fallback_identity(getattr(document, "source_url", "") or reference)
