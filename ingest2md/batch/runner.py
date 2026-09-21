@@ -22,6 +22,13 @@ def classify_error(exc: Exception) -> tuple[str, bool]:
     if isinstance(exc, TimeoutError):
         return "timeout", True
     message = str(exc).lower()
+    if any(token in message for token in ("timeout", "timed out", "read timeout")):
+        return "timeout", True
+    if any(token in message for token in (
+        "connection reset", "connection aborted", "remote disconnected",
+        "connection closed", "server disconnected",
+    )):
+        return "transient_network", True
     if "429" in message or "too many requests" in message:
         return "rate_limited", True
     if any(token in message for token in ("502", "503", "504", "temporarily unavailable")):
