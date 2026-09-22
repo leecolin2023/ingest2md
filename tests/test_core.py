@@ -766,6 +766,62 @@ def test_douyin_snapshot_collects_all_videos_and_prefers_detail_candidates():
     assert meta["saw_blob"] is True
 
 
+def test_douyin_snapshot_uses_network_media_after_blob_dom():
+    from ingest2md.media.douyin import normalize_page_snapshot
+
+    meta = normalize_page_snapshot({
+        "videos": [
+            {"current_src": "blob:https://www.douyin.com/real-player"},
+        ],
+        "network_media_candidates": [
+            "https://v26-web.douyinvod.com/network/full.mp4",
+        ],
+        "canonical_url": "https://www.douyin.com/video/1234567890",
+    }, "https://www.douyin.com/video/1234567890")
+
+    assert meta["media_candidates"] == [
+        "https://v26-web.douyinvod.com/network/full.mp4",
+    ]
+    assert meta["media_url"] == "https://v26-web.douyinvod.com/network/full.mp4"
+    assert meta["saw_blob"] is True
+
+
+def test_douyin_candidate_priority_is_detail_then_dom_then_network():
+    from ingest2md.media.douyin import normalize_page_snapshot
+
+    meta = normalize_page_snapshot({
+        "media_candidates": ["https://media.example/detail.mp4"],
+        "videos": [
+            {"current_src": "https://media.example/dom.mp4"},
+        ],
+        "network_media_candidates": [
+            "https://media.example/network.mp4",
+        ],
+        "canonical_url": "https://www.douyin.com/video/1234567890",
+    }, "https://www.douyin.com/video/1234567890")
+
+    assert meta["media_candidates"] == [
+        "https://media.example/detail.mp4",
+        "https://media.example/dom.mp4",
+        "https://media.example/network.mp4",
+    ]
+
+
+def test_douyin_network_media_filter_excludes_hls_manifest():
+    from ingest2md.media.douyin import _is_downloadable_network_media
+
+    assert _is_downloadable_network_media(
+        "https://v26-web.douyinvod.com/full.mp4",
+        content_type="video/mp4",
+        resource_type="media",
+    )
+    assert not _is_downloadable_network_media(
+        "https://v26-web.douyinvod.com/playlist.m3u8",
+        content_type="application/vnd.apple.mpegurl",
+        resource_type="media",
+    )
+
+
 def test_douyin_detail_snapshot_prefers_published_video_before_audio_fallback():
     from ingest2md.media.douyin import snapshot_from_aweme_detail
 
