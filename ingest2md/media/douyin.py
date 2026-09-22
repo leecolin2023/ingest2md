@@ -2,8 +2,9 @@
 
 This deliberately avoids generating private signatures (a_bogus/X-Bogus).
 The adapter lets the rendered page do its own JavaScript work, consumes media
-URLs from the browser's signed detail response, and keeps direct DOM URLs as a
-fallback.
+URLs from the browser's signed detail response, keeps direct DOM URLs as the
+first fallback, and can reuse direct media URLs already observed in browser
+network responses when a player exposes only a blob: URL.
 """
 from __future__ import annotations
 
@@ -36,6 +37,30 @@ def _url_list(value) -> list[str]:
     elif isinstance(urls, dict):
         urls = [urls.get("main_url"), urls.get("backup_url"), urls.get("fallback_url")]
     return [str(item).strip() for item in urls if str(item or "").startswith(("http://", "https://"))]
+
+
+def _is_downloadable_network_media(
+    response_url: str,
+    content_type: str = "",
+    resource_type: str = "",
+) -> bool:
+    """Return whether a browser response looks like a directly downloadable media file."""
+    url_hint = str(response_url or "").lower()
+    content_type = str(content_type or "").lower()
+    resource_type = str(resource_type or "").lower()
+    if not url_hint.startswith(("http://", "https://")):
+        return False
+
+    # The shared downloader fetches one regular HTTP file. An HLS manifest is
+    # not itself a playable media file and needs a different acquisition path.
+    if ".m3u8" in url_hint or "mpegurl" in content_type:
+        return False
+
+    return (
+        resource_type == "media"
+        or content_type.startswith(("audio/", "video/"))
+        or any(marker in url_hint for marker in ("douyinvod", ".mp4", ".m4a", ".mp3"))
+    )
 
 
 def snapshot_from_aweme_detail(payload: dict) -> dict:
@@ -76,6 +101,8 @@ def snapshot_from_aweme_detail(payload: dict) -> dict:
 
 def normalize_page_snapshot(snapshot: dict, final_url: str) -> dict:
     """Normalize all browser/detail media candidates instead of trusting the first video."""
+    # Candidate priority is intentional:
+    # browser detail response > direct DOM media URL > browser network fallback.
     candidates = list(snapshot.get("media_candidates") or [])
     saw_blob = False
     videos = snapshot.get("videos") or []
@@ -87,6 +114,7 @@ def normalize_page_snapshot(snapshot: dict, final_url: str) -> dict:
             video.get("src", ""),
             *(video.get("sources") or []),
         ])
+    candidates.extend(snapshot.get("network_media_candidates") or [])
 
     media_candidates = []
     for candidate in candidates:
@@ -147,6 +175,7 @@ async def resolve_video_page(
 
         page = await context.new_page()
         detail_snapshots: list[dict] = []
+        network_media_candidates: list[str] = []
         response_tasks: set[asyncio.Task] = set()
         detail_ready = asyncio.Event()
 
@@ -166,7 +195,34 @@ async def resolve_video_page(
             response_tasks.add(task)
             task.add_done_callback(response_tasks.discard)
 
+        async def capture_network_media(response):
+            """Keep direct media responses behind a blob-backed player."""
+            if response.status >= 400:
+                return
+            response_url = str(response.url or "")
+            try:
+                headers = await response.all_headers()
+            except Exception:
+                headers = {}
+            content_type = str(headers.get("content-type") or "")
+            resource_type = str(response.request.resource_type or "")
+            if (
+                _is_downloadable_network_media(
+                    response_url,
+                    content_type=content_type,
+                    resource_type=resource_type,
+                )
+                and response_url not in network_media_candidates
+            ):
+                network_media_candidates.append(response_url)
+
+        def schedule_network_media_capture(response):
+            task = asyncio.create_task(capture_network_media(response))
+            response_tasks.add(task)
+            task.add_done_callback(response_tasks.discard)
+
         page.on("response", schedule_detail_capture)
+        page.on("response", schedule_network_media_capture)
         try:
             response = await page.goto(
                 url,
@@ -248,6 +304,9 @@ async def resolve_video_page(
             detail["canonical_url"] = final_url
             detail["videos"] = snapshot.get("videos") or []
             snapshot = {**snapshot, **detail}
+        # Keep network observations separate so normalize_page_snapshot can
+        # place them after detail and DOM candidates instead of promoting them.
+        snapshot["network_media_candidates"] = network_media_candidates
         meta = normalize_page_snapshot(snapshot or {}, final_url)
 
         browser_cookies = await context.cookies()
