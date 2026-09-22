@@ -41,7 +41,7 @@ Markdown-first output
 | YouTube | 已接入 | 单视频 → 人工/自动字幕优先 → 无字幕才下载音频 → ASR | 不做频道 / 播放列表采集；访问可能受 Cookie、JS challenge、PO Token、网络出口影响 |
 | Bilibili | 已接入 | 单视频 / 分 P / BV 号 → 字幕优先 → ASR fallback | 不做 UP 主空间、合集批量采集 |
 | 小宇宙 | 已接入 | 公开单集 → Show Notes → 公开音频 → 校验 → ASR → 章节化 Markdown | 只处理公开 episode；不接私有 API |
-| 抖音 | 轻量接入 | 单视频 / 分享短链 → Playwright → 浏览器已产生的详情响应或 DOM 媒体候选 → 音轨/时长校验 → ASR | 不实现 `a_bogus` / `X-Bogus`、私有签名、主页/合集/评论/直播；登录墙或只暴露 `blob:` 时会失败 |
+| 抖音 | 轻量接入 | 单视频 / 分享短链 → Playwright → 详情响应 → DOM 直接媒体 → 浏览器网络媒体 fallback → 音轨/时长校验 → ASR | 不实现 `a_bogus` / `X-Bogus`、私有签名、主页/合集/评论/直播；三类候选均不可用或登录墙时失败 |
 | 微信视频号 | 仅识别 | 命中来源后明确提示改走本地文件 | 当前不自动获取媒体 |
 | 普通网页 | 已接入 | HTTP → Trafilatura 主正文 → 不足时浏览器 fallback | 目标是“主要正文”，不是完整网页镜像或站点爬虫 |
 | 本地音视频 | 已接入 | 本地文件 → 配置 ASR backend → 原语言转写 → Markdown | 不做说话人分离、强制对齐、自动翻译 |
