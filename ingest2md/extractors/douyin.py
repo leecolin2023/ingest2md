@@ -21,12 +21,13 @@ logger = logging.getLogger(__name__)
 
 class DouyinExtractor:
     name = "抖音视频"
-    description = "抖音单视频 / 分享短链 → 浏览器详情响应或 DOM 媒体地址 → ASR → Markdown"
+    description = "抖音单视频 / 分享短链 → 详情响应 / DOM / 浏览器网络媒体 fallback → ASR → Markdown"
     acquisition_plan = (
         "用现有 Playwright 打开抖音分享短链或单视频页面",
-        "优先读取浏览器已经签名的详情响应，回退到 DOM 暴露的 http(s) 媒体地址",
+        "优先读取浏览器已经签名的详情响应，其次使用 DOM 暴露的 http(s) 媒体地址",
+        "DOM 只有 blob 时，最后回退浏览器已经请求过的直接媒体网络响应",
         "逐个下载并验证音轨/时长后进入配置的 ASR backend（默认 SenseVoice 本地）",
-        "如果页面只暴露 blob/登录墙则明确提示 Cookie 或本地文件 fallback",
+        "如果三类候选均不可用或遇到登录墙，则明确提示 Cookie 或本地文件 fallback",
     )
 
     def __init__(self, settings: Settings | None = None, runtime=None):
