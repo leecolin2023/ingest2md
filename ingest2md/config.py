@@ -17,6 +17,11 @@ class Settings:
     subtitle_window_seconds: int = 300
     transcript_window_seconds: int = 300
 
+    # Transcript normalization. Basic is local/deterministic; LLM is opt-in.
+    transcript_normalization: str = "basic"  # off | basic | llm
+    normalization_model: str = ""  # empty -> llm_model
+    normalization_window_segments: int = 8
+
     # Local SenseVoice ONNX.
     sensevoice_model_dir: str = ""
     sensevoice_chunk_seconds: int = 30
@@ -103,6 +108,10 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
         data["asr_backend"] = os.environ["ASR_BACKEND"]
     if os.environ.get("ASR_LANGUAGE"):
         data["asr_language"] = os.environ["ASR_LANGUAGE"]
+    if os.environ.get("TRANSCRIPT_NORMALIZATION"):
+        data["transcript_normalization"] = os.environ["TRANSCRIPT_NORMALIZATION"]
+    if os.environ.get("NORMALIZATION_MODEL"):
+        data["normalization_model"] = os.environ["NORMALIZATION_MODEL"]
     if os.environ.get("ASR_API_KEY"):
         data["openai_asr_api_key"] = os.environ["ASR_API_KEY"]
     elif os.environ.get("OPENAI_API_KEY"):
@@ -119,6 +128,8 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
 
     if settings.asr_backend not in {"sensevoice", "openai", "llm"}:
         raise ValueError("asr_backend 仅支持 sensevoice, openai, llm")
+    if settings.transcript_normalization not in {"off", "basic", "llm"}:
+        raise ValueError("transcript_normalization 仅支持 off, basic, llm")
     if not isinstance(settings.asr_language, str) or not settings.asr_language.strip():
         raise ValueError("asr_language 必须是非空字符串")
     if type(settings.limit_seconds) is not int or settings.limit_seconds < 0:
@@ -127,7 +138,8 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
         raise ValueError("max_answers 必须是非负整数")
 
     for key in (
-        "subtitle_window_seconds", "transcript_window_seconds", "sensevoice_chunk_seconds", "sensevoice_batch_size",
+        "subtitle_window_seconds", "transcript_window_seconds", "normalization_window_segments",
+        "sensevoice_chunk_seconds", "sensevoice_batch_size",
         "openai_asr_chunk_seconds", "openai_asr_timeout", "llm_chunk_seconds",
     ):
         if type(getattr(settings, key)) is not int or getattr(settings, key) <= 0:
@@ -153,7 +165,8 @@ def load_settings(config_path: str | None = None, **overrides) -> Settings:
     settings.formats = tuple(dict.fromkeys(["md", *formats]))
 
     for key in (
-        "asr_backend", "asr_language", "sensevoice_model_dir",
+        "asr_backend", "asr_language", "transcript_normalization", "normalization_model",
+        "sensevoice_model_dir",
         "openai_asr_base_url", "openai_asr_api_key", "openai_asr_model", "asr_prompt",
         "llm_base_url", "llm_api_key", "llm_model", "llm_api",
         "cookies_file", "youtube_cookies_file", "bilibili_cookies_file",
