@@ -5,7 +5,7 @@
 `ingest2md` 的目标不是做一个“万能爬虫”，也不是直接做总结、RAG 或知识库。
 它负责的是更靠前、也更基础的一层：**识别内容来源 → 选择合适的采集方式 → 尽量保留原始语义 → 输出可移植 Markdown**。
 
-当前版本：**v0.9.3**。主干 CI 覆盖 Python 3.10 / 3.12，当前测试集为 **55 tests**。
+当前版本：**v0.10.0**。主干 CI 覆盖 Python 3.10 / 3.12。
 
 ## 1. 它解决什么问题
 
@@ -40,11 +40,11 @@ Markdown-first output
 | 小红书 | 轻量接入 | 单篇笔记 → 浏览器渲染 → 正文 + 当前可取得图片 | 不做 OCR / Vision，不承诺登录墙后的内容 |
 | YouTube | 已接入 | 单视频 → 人工/自动字幕优先 → 无字幕才下载音频 → ASR | 不做频道 / 播放列表采集；访问可能受 Cookie、JS challenge、PO Token、网络出口影响 |
 | Bilibili | 已接入 | 单视频 / 分 P / BV 号 → 字幕优先 → ASR fallback | 不做 UP 主空间、合集批量采集 |
-| 小宇宙 | 已接入 | 公开单集 → Show Notes → 公开音频 → 校验 → ASR → 章节化 Markdown | 只处理公开 episode；不接私有 API |
+| 小宇宙 | 已接入 | 公开单集 → Show Notes → 公开音频 → 校验 → ASR → source-aware Normalization → 章节化 Markdown | 只处理公开 episode；不接私有 API |
 | 抖音 | 轻量接入 | 单视频 / 分享短链 → Playwright → 详情响应 → DOM 直接媒体 → 浏览器网络媒体 fallback → 音轨/时长校验 → ASR | 不实现 `a_bogus` / `X-Bogus`、私有签名、主页/合集/评论/直播；三类候选均不可用或登录墙时失败 |
 | 微信视频号 | 仅识别 | 命中来源后明确提示改走本地文件 | 当前不自动获取媒体 |
 | 普通网页 | 已接入 | HTTP → Trafilatura 主正文 → 不足时浏览器 fallback | 目标是“主要正文”，不是完整网页镜像或站点爬虫 |
-| 本地音视频 | 已接入 | 本地文件 → 配置 ASR backend → 原语言转写 → Markdown | 不做说话人分离、强制对齐、自动翻译 |
+| 本地音视频 | 已接入 | 本地文件 → 配置 ASR backend → Transcript Normalization → Markdown | 不做说话人分离、强制对齐、自动翻译 |
 | PDF / DOCX / PPTX / XLSX | 可选能力 | 委托 Microsoft MarkItDown → Markdown | 需安装 `.[documents]`；项目不自行维护文档解析器 |
 
 本地音视频扩展名：
@@ -58,7 +58,7 @@ video: .mp4 .mkv .mov .webm .avi .m4v
 
 当前产品边界刻意保持清晰：
 
-- 不在 ingestion 阶段自动总结、改写或翻译内容；
+- 不在 ingestion 阶段自动总结、语义改写或翻译内容；Transcript Normalization 只修复 ASR 明显文本问题，不改变原意；
 - 不把 OCR / Vision 当成默认网页或图片处理链路；
 - 不建设通用站点爬虫、频道/主页/合集抓取器；
 - 不自行维护 YouTube、抖音等平台的私有签名或逆向协议；
@@ -193,7 +193,7 @@ YouTube / Bilibili
   └─ 无字幕 → 下载音频 → ASR backend → TranscriptResult → Markdown
 
 Local media / Xiaoyuzhou / Douyin
-  └─ 媒体 → 校验/预处理 → ASR backend → TranscriptResult → Markdown
+  └─ 媒体 → 校验/预处理 → ASR backend → Transcript Normalization → TranscriptResult → Markdown
 ```
 
 当前 ASR backend：
@@ -205,6 +205,31 @@ Local media / Xiaoyuzhou / Douyin
 | `llm` | 兼容 `chat/responses + input_audio` 的多模态模型 | 可选 |
 
 每个 backend 自己负责预处理和切片；Markdown 展示窗口由 `transcript_window_seconds` 单独控制，避免把“模型推理 chunk”与“最终阅读结构”绑死。
+
+### Transcript Normalization
+
+所有 **ASR** 结果会在统一 `transcribe_audio()` 出口进入 Normalization；平台原生字幕保持原样，不做二次改写。
+
+```text
+ASR Backend
+  ↓
+Raw TranscriptResult
+  ↓
+basic normalization        # 默认，本地、确定性
+  └─ optional llm          # 显式开启
+  ↓
+Normalized TranscriptResult
+```
+
+三种模式：
+
+- `off`：不规范化；
+- `basic`：默认，本地执行；清理 SenseVoice 富文本符号、异常空白，并处理 `f d e → FDE` 这类确定性缩写；
+- `llm`：在 basic 结果上进行受约束的专有名词 / 标点校正，失败时按窗口回退 basic，不使 ingestion 失败。
+
+Normalization 保持以下不变量：**segment 数量、顺序、start/end 时间戳不变**。规范化开启时，`Segment.raw_text` 保存 ASR 原文，`Segment.text` 保存规范化结果；JSON 因而可以同时用于回溯 ASR 与 Normalizer。
+
+小宇宙会把节目标题、Show Notes、嘉宾和可识别产品 / 英文术语转换为通用 `NormalizationHints`。Normalizer 只认识 hints，不依赖“小宇宙”平台实现。
 
 ## 8. 输出模型
 
@@ -244,6 +269,10 @@ asr_backend: "sensevoice"
 asr_language: "auto"
 transcript_window_seconds: 300
 
+transcript_normalization: "basic"  # off | basic | llm
+normalization_model: ""            # 留空时复用 llm_model
+normalization_window_segments: 8
+
 sensevoice_chunk_seconds: 30
 sensevoice_batch_size: 2
 
@@ -281,6 +310,8 @@ Extractor
     └─ local media
     ↓
 TranscriptResult (optional)
+    ├─ raw ASR text
+    └─ normalized text
     ↓
 Document
     ↓
@@ -329,7 +360,7 @@ ingest2md --help
 ```
 
 CI 在 push 到 `main` 和 pull request 时运行 Python 3.10 / 3.12。
-当前 v0.9.3 主干 CI 已通过 55 tests，详见 [TEST_REPORT.md](TEST_REPORT.md)。
+当前主干 CI 与回归基线见 [TEST_REPORT.md](TEST_REPORT.md)。
 
 新增来源时优先遵循以下规则：
 
@@ -342,6 +373,7 @@ CI 在 push 到 `main` 和 pull request 时运行 Python 3.10 / 3.12。
 
 ## 13. 最近版本
 
+- **v0.10.0**：新增通用 Transcript Normalization；默认 basic 本地规范化，可选 LLM 校对；保留 raw transcript；小宇宙利用 Show Notes / 嘉宾 / 产品名注入 source hints；
 - **v0.9.3**：长音频展示结构与 ASR chunk 解耦；小宇宙加入音频完整性校验和 Show Notes 章节化转写；
 - **v0.9.2**：Batch TXT 升级为自由文本 Reference scanner；
 - **v0.9.1**：引入 long-lived `RuntimeContext`，批量复用 ASR backend、SenseVoice 模型和 Chromium；
