@@ -128,8 +128,9 @@ def test_xiaoyuzhou_extractor_calls_shared_transcription(tmp_path: Path, monkeyp
         target.write_bytes(b"fake")
         return target
 
-    def fake_transcribe(audio_path, work, settings):
+    def fake_transcribe(audio_path, work, settings, **kwargs):
         called["transcribe"] = True
+        called["hints"] = kwargs.get("hints")
         return TranscriptResult(
             [Segment(0, 60, "中文转写")],
             ["mock-asr"], 60,
@@ -149,10 +150,135 @@ def test_xiaoyuzhou_extractor_calls_shared_transcription(tmp_path: Path, monkeyp
     ))
     assert called["transcribe"] is True
     assert called["audio_url"] == "https://media.xyzcdn.net/demo/audio.m4a"
+    assert called["hints"].source_type == "xiaoyuzhou"
+    assert called["hints"].title.startswith("Vol.1")
+    assert "AI" in called["hints"].terms
     assert "## Show Notes" in doc.body_md
     assert "01:21 AI落地" in doc.body_md
     assert "## 转写正文" in doc.body_md
     assert "中文转写" in doc.body_md
+
+
+
+def test_xiaoyuzhou_builds_people_and_product_normalization_hints():
+    from ingest2md.extractors.xiaoyuzhou import build_normalization_hints
+
+    hints = build_normalization_hints({
+        "title": "AI 圆桌",
+        "podcast_title": "易论AI",
+        "description": "讨论 Agent 与 Skill",
+        "shownotes_md": (
+            "李继刚｜43AI合伙人\n"
+            "橘子｜[Cola](https://colaos.ai/) · "
+            "[ListenHub](https://listenhub.ai/zh)\n"
+            "歸藏｜AI创业者，Skill玩得很深\n"
+            "主播：易亚婷｜易论AI主理人\n"
+            "35:38 Agent加X"
+        ),
+    })
+
+    assert hints.source_type == "xiaoyuzhou"
+    assert {"李继刚", "橘子", "歸藏", "易亚婷"}.issubset(set(hints.people))
+    assert {"43AI", "Cola", "ListenHub", "Skill", "Agent"}.issubset(set(hints.terms))
+
+
+def test_basic_transcript_normalization_preserves_raw_and_timestamps(tmp_path: Path):
+    from ingest2md.transcription.normalization import NormalizationHints
+    from ingest2md.transcription.service import transcribe_audio
+
+    class FakeBackend:
+        def transcribe(self, audio_path, work_dir, settings):
+            return TranscriptResult(
+                [Segment(10, 40, "模型能力和业务中间有一个 f d e 😊")],
+                ["fake-asr"],
+                40,
+                language="zh",
+            )
+
+    result = transcribe_audio(
+        "unused.wav",
+        tmp_path,
+        Settings(transcript_normalization="basic"),
+        backend=FakeBackend(),
+        hints=NormalizationHints(terms=("FDE",)),
+    )
+
+    assert result.segments[0].start == 10
+    assert result.segments[0].end == 40
+    assert result.segments[0].text == "模型能力和业务中间有一个 FDE"
+    assert result.segments[0].raw_text == "模型能力和业务中间有一个 f d e 😊"
+    assert result.normalization.mode == "basic"
+    assert result.normalization.changed_segments == 1
+
+
+def test_llm_transcript_normalization_failure_falls_back_to_basic(tmp_path: Path):
+    from ingest2md.transcription.service import transcribe_audio
+
+    class FakeBackend:
+        def transcribe(self, audio_path, work_dir, settings):
+            return TranscriptResult(
+                [Segment(0, 30, "这里是 a i 😊")],
+                ["fake-asr"],
+                30,
+            )
+
+    result = transcribe_audio(
+        "unused.wav",
+        tmp_path,
+        Settings(transcript_normalization="llm", llm_api_key=""),
+        backend=FakeBackend(),
+    )
+
+    assert result.segments[0].text == "这里是 AI"
+    assert result.segments[0].raw_text == "这里是 a i 😊"
+    assert result.normalization.mode == "llm"
+    assert any("回退 basic" in warning for warning in result.normalization.warnings)
+
+
+def test_llm_transcript_normalization_keeps_segment_invariants(tmp_path: Path, monkeypatch):
+    from ingest2md.transcription import normalization_llm
+    from ingest2md.transcription.normalization import NormalizationHints
+    from ingest2md.transcription.service import transcribe_audio
+
+    class FakeBackend:
+        def transcribe(self, audio_path, work_dir, settings):
+            return TranscriptResult(
+                [
+                    Segment(0, 30, "work克body 是一个 agent"),
+                    Segment(30, 60, "继续讨论"),
+                ],
+                ["fake-asr"],
+                60,
+            )
+
+    def fake_smart(segments, hints, settings):
+        assert hints.terms == ("WorkBuddy", "Agent")
+        return ["WorkBuddy 是一个 Agent。", "继续讨论。"], "mock-normalizer", []
+
+    monkeypatch.setattr(normalization_llm, "normalize_segments_with_llm", fake_smart)
+    result = transcribe_audio(
+        "unused.wav",
+        tmp_path,
+        Settings(
+            transcript_normalization="llm",
+            llm_api_key="test",
+            normalization_model="mock-normalizer",
+        ),
+        backend=FakeBackend(),
+        hints=NormalizationHints(terms=("WorkBuddy", "Agent")),
+    )
+
+    assert [(s.start, s.end) for s in result.segments] == [(0, 30), (30, 60)]
+    assert [s.text for s in result.segments] == [
+        "WorkBuddy 是一个 Agent。",
+        "继续讨论。",
+    ]
+    assert [s.raw_text for s in result.segments] == [
+        "work克body 是一个 agent",
+        "继续讨论",
+    ]
+    assert result.normalization.model == "mock-normalizer"
+
 
 
 def test_default_write_is_markdown_only(tmp_path: Path):
