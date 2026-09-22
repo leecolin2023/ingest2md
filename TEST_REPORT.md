@@ -43,8 +43,7 @@ ingest2md --help
 
 ### Source adapters
 
-- 微信 / 普通网页解析基础能力；
-- 知乎 / 小红书相关路由与解析辅助；
+- Generic Web 正文抽取与 Trafilatura 优先策略；
 - YouTube 字幕优先与 ASR fallback；
 - Bilibili 字幕优先；
 - 小宇宙公开 episode 解析、Show Notes 章节与音频完整性校验；
