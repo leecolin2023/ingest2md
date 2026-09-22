@@ -1,8 +1,8 @@
-# ingest2md v0.9.3 Test Report
+# ingest2md v0.10.0 Test Report
 
-测试基线：`main@1e4234de8fd420d0eed99c0cd8e041437ad419ee`
+功能代码验证基线：`feat/transcript-normalization@5ebfbea03e90e5f4fe62b813c6dbddba67791449`
 
-GitHub Actions run：`35563648583`
+GitHub Actions run：`35709378656`
 
 结果：**success**
 
@@ -22,15 +22,9 @@ python -m pytest -q
 ingest2md --help
 ```
 
-当前测试集：
-
-```text
-55 passed
-```
+当前测试文件包含 **62 个 test functions**，Python 3.10 / 3.12 的 pytest 均通过。
 
 ## 覆盖重点
-
-当前 55 个测试主要覆盖以下产品边界：
 
 ### Reference / Router
 
@@ -46,20 +40,25 @@ ingest2md --help
 - Generic Web 正文抽取与 Trafilatura 优先策略；
 - YouTube 字幕优先与 ASR fallback；
 - Bilibili 字幕优先；
-- 小宇宙公开 episode 解析、Show Notes 章节与音频完整性校验；
-- 抖音浏览器媒体候选、详情响应优先级、无效短媒体剔除；
+- 小宇宙公开 episode 解析、Show Notes 章节、音频完整性校验；
+- 小宇宙从标题、Show Notes、嘉宾与产品 / 英文术语构造 `NormalizationHints`；
+- 抖音详情响应 / DOM / 浏览器网络媒体候选顺序与无效媒体剔除；
 - MarkItDown document delegation。
 
 ### Transcription
 
 - 默认 SenseVoice local-first；
 - 三种 ASR backend factory；
-- SenseVoice 自己拥有 WAV chunking；
-- true multi-file batch inference；
-- 单次 ffmpeg segment；
-- OpenAI-compatible backend 自己拥有 MP3 chunking；
+- backend 自己拥有预处理与 chunking；
 - Markdown 阅读窗口与底层 ASR segment 解耦；
-- SRT / JSON 仍使用原始 TranscriptResult 时间信息。
+- Transcript Normalization 默认 `basic`；
+- `f d e → FDE` 等确定性缩写清理；
+- SenseVoice 富文本装饰符清理；
+- `Segment.raw_text` 保留原始 ASR；
+- Normalization 不改变 segment 数量、顺序与时间戳；
+- LLM normalization 失败自动回退 basic；
+- 可选 LLM normalization 保留 source hints 与 segment invariants；
+- SRT / JSON 继续复用统一 TranscriptResult。
 
 ### Batch / Runtime
 
@@ -76,21 +75,14 @@ ingest2md --help
 
 这些测试主要验证内部行为与回归，不等于对第三方网站的实时可用性承诺。
 
-在线平台仍可能因为以下因素失败：
+在线平台仍可能因为登录 / Cookie、反爬、人机校验、网络出口、页面结构变化、地区限制或平台策略而失败。
 
-- 登录 / Cookie 失效；
-- 反爬或人机校验；
-- YouTube JS challenge / PO Token / 网络出口；
-- 页面结构变化；
-- 地区限制或平台临时策略。
+## v0.10.0 回归重点
 
-因此文档中的“已接入”表示项目已有明确处理链路，并不表示所有公开 URL 在所有网络环境下都必然成功。
-
-## v0.9.3 回归重点
-
-- 小宇宙下载音频在 ASR 前校验音轨与明显截断；
-- `transcript_window_seconds` 只控制 Markdown 展示，不改变 backend chunk；
-- 固定窗口可聚合 30 秒 ASR segment；
-- Show Notes 支持 `MM:SS`、`H:MM:SS` 与链接式时间点；
-- 有语义章节时按章节展示，无章节时回退固定窗口；
-- Bilibili / YouTube / 本地媒体 / 抖音继续复用统一 transcript presentation。
+- Normalization 位于统一 ASR 出口，而不是复制到各 Adapter；
+- 平台原生字幕不经过 Normalization；
+- `basic` 为本地默认能力，不需要付费 API；
+- `llm` 只是显式可选增强，单窗口失败不能让成功 ASR 任务失败；
+- Raw ASR 与 normalized text 可同时保留，便于后续评测和问题定位；
+- 小宇宙只负责产生通用 hints，Normalizer 不依赖平台实现；
+- 没有引入 speaker diarization、WhisperX、pyannote、Provider Manager 或新的工作流框架。
