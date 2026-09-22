@@ -1,16 +1,19 @@
 # ingest2md v0.9.3 Test Report
 
-测试日期：2026-09-21
+测试基线：`main@1e4234de8fd420d0eed99c0cd8e041437ad419ee`
 
-## 结果
+GitHub Actions run：`35563648583`
 
-GitHub Actions 在 Python 3.10 与 3.12 均通过：
+结果：**success**
+
+CI matrix：
 
 ```text
-55 passed
+Python 3.10
+Python 3.12
 ```
 
-执行链路：
+每个 matrix 执行：
 
 ```bash
 python -m pip install -e ".[test]"
@@ -19,44 +22,76 @@ python -m pytest -q
 ingest2md --help
 ```
 
-首轮 v0.9.3 CI run：
+当前测试集：
 
 ```text
-35563505760
+55 passed
 ```
 
-## v0.9.3 Podcast / Long-form Transcript
+## 覆盖重点
 
-本版把“模型推理切片”和“最终 Markdown 阅读结构”正式解耦，并优先增强小宇宙长音频：
+当前 55 个测试主要覆盖以下产品边界：
 
-1. 小宇宙音频下载完成后先调用现有 `probe_media_info()`；
-2. 无音轨、时长无效、或实际时长明显短于页面 episode duration 时，在 ASR 前直接失败；
-3. 新增 `transcript_window_seconds=300`，只控制 Markdown 展示窗口；
-4. SenseVoice 仍保持自己的 30 秒 WAV chunk，不因 Markdown 展示粒度而变化；
-5. 通用 `render_markdown()` 将底层 segments 聚合为可读时间窗口；
-6. 小宇宙 Show Notes 中的 `MM:SS` / `H:MM:SS` 时间点会解析成语义章节；
-7. 支持普通 Markdown 行、列表和时间戳链接形式；
-8. 有章节时优先按章节组织转写；没有章节时自动回退到通用时间窗口；
-9. SRT / JSON 继续基于原始 TranscriptResult segments，不因 Markdown 聚合而丢失时间信息。
+### Reference / Router
 
-## 新增回归重点
+- App 分享文本 URL 提取；
+- BV 号规范化；
+- 本地文件只在真实存在时路由；
+- 特定平台优先于 Generic Web；
+- 微信视频号 deferred 路由；
+- `--explain` dry-run。
 
-- 30 秒 ASR segments 能聚合成 5 分钟 Markdown 阅读块；
-- 最后一段不足 5 分钟时仍保留真实结束时间；
-- Show Notes 能解析 `01:21`、链接式 `[15:16](...)`、`1:02:03`；
-- chapter renderer 会生成“开场 + Show Notes 章节”；
-- 下载音频明显短于页面时长时，必须在 ASR 前失败；
-- 既有小宇宙公开页面解析和 shared transcription 仍正常；
-- Bilibili / YouTube / 本地媒体 / 抖音也统一使用 transcript presentation window；
-- 新配置项进入 batch config fingerprint，展示规则变化可触发重新处理。
+### Source adapters
 
-## 保持不变的边界
+- 微信 / 普通网页解析基础能力；
+- 知乎 / 小红书相关路由与解析辅助；
+- YouTube 字幕优先与 ASR fallback；
+- Bilibili 字幕优先；
+- 小宇宙公开 episode 解析、Show Notes 章节与音频完整性校验；
+- 抖音浏览器媒体候选、详情响应优先级、无效短媒体剔除；
+- MarkItDown document delegation。
 
-- 不改变 SenseVoice / OpenAI ASR / LLM audio backend 的切片策略；
-- 不引入第二套小宇宙转写框架；
-- 不使用 LLM 猜测章节标题，章节语义只来自平台 Show Notes；
-- 不引入 VAD、speaker diarization、WhisperX、pyannote 等重型依赖；
-- 不默认生成 SRT；SRT 仍是显式 opt-in 的互操作格式；
-- Markdown 是面向人和 LLM 的 canonical output，底层 TranscriptResult 仍保留原始 segment 时间。
+### Transcription
 
-这使长播客从“ASR 原始切片堆叠”向“结构化、可定位的长文本语料”前进一步，同时保持现有轻量架构。
+- 默认 SenseVoice local-first；
+- 三种 ASR backend factory；
+- SenseVoice 自己拥有 WAV chunking；
+- true multi-file batch inference；
+- 单次 ffmpeg segment；
+- OpenAI-compatible backend 自己拥有 MP3 chunking；
+- Markdown 阅读窗口与底层 ASR segment 解耦；
+- SRT / JSON 仍使用原始 TranscriptResult 时间信息。
+
+### Batch / Runtime
+
+- TXT / CSV / JSONL manifest；
+- TXT 自由文本多 Reference scanner；
+- IngestionEngine 作为 single / batch 共用核心；
+- SQLite resume / retry；
+- 单任务失败隔离；
+- RuntimeContext 懒加载并复用 ASR backend；
+- SenseVoice 模型跨任务复用；
+- Chromium process 复用且 BrowserContext 按任务隔离。
+
+## 测试不代表什么
+
+这些测试主要验证内部行为与回归，不等于对第三方网站的实时可用性承诺。
+
+在线平台仍可能因为以下因素失败：
+
+- 登录 / Cookie 失效；
+- 反爬或人机校验；
+- YouTube JS challenge / PO Token / 网络出口；
+- 页面结构变化；
+- 地区限制或平台临时策略。
+
+因此文档中的“已接入”表示项目已有明确处理链路，并不表示所有公开 URL 在所有网络环境下都必然成功。
+
+## v0.9.3 回归重点
+
+- 小宇宙下载音频在 ASR 前校验音轨与明显截断；
+- `transcript_window_seconds` 只控制 Markdown 展示，不改变 backend chunk；
+- 固定窗口可聚合 30 秒 ASR segment；
+- Show Notes 支持 `MM:SS`、`H:MM:SS` 与链接式时间点；
+- 有语义章节时按章节展示，无章节时回退固定窗口；
+- Bilibili / YouTube / 本地媒体 / 抖音继续复用统一 transcript presentation。
