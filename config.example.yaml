@@ -1,4 +1,4 @@
-# ingest2md v0.9.3 example configuration
+# ingest2md v0.10.0 example configuration
 
 # Local-first transcription. No paid API is required for the default path.
 asr_backend: "sensevoice"       # sensevoice | openai | llm
@@ -6,6 +6,11 @@ asr_language: "auto"
 limit_seconds: 0
 subtitle_window_seconds: 300
 transcript_window_seconds: 300  # Markdown 阅读窗口；与 ASR chunk 解耦
+
+# Transcript normalization. basic is local/deterministic; llm is optional.
+transcript_normalization: "basic"  # off | basic | llm
+normalization_model: ""            # empty -> llm_model
+normalization_window_segments: 8
 
 # SenseVoice ONNX. Leave model_dir empty to download iic/SenseVoiceSmall on first use.
 sensevoice_model_dir: ""

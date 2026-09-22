@@ -109,7 +109,8 @@ ingest2md "<Content Reference>" --explain
 - 提取节目简介 / Show Notes；
 - 下载公开音频后先校验音轨和时长；
 - Show Notes 有时间点时，用其组织语义章节；
-- 没有章节时按 `transcript_window_seconds` 组织 Markdown。
+- 没有章节时按 `transcript_window_seconds` 组织 Markdown；
+- 标题、Show Notes、嘉宾、产品 / 英文术语应转换为通用 `NormalizationHints`，不要把平台规则写进 Normalizer。
 
 ### 抖音
 
@@ -174,6 +175,10 @@ asr_backend = sensevoice
 
 - backend 自己负责预处理 / chunking；
 - SenseVoice 默认 30 秒 WAV chunk、batch=2；
+- ASR 结果统一经过 `transcribe_audio()` 的 Transcript Normalization；平台原生字幕不经过；
+- `transcript_normalization=basic` 为默认本地确定性清理，`llm` 为显式可选增强，`off` 可关闭；
+- Normalizer 只能改 segment text，不得改变数量、顺序或时间戳；
+- 开启规范化时必须保留 `raw_text`，LLM 失败时回退 basic 并记录 warning；
 - Markdown 阅读窗口与 ASR chunk 解耦；
 - 保留原语言，不自动翻译；
 - 不另建 Provider Manager / Resolver Registry。
@@ -249,7 +254,8 @@ manifest：
 3. 单条共用执行能力 → `engine.py` / `runtime.py`；
 4. 批量任务状态 / 调度 → `batch/`；
 5. ASR 输入差异 → 对应 transcription backend；
-6. 最终阅读结构 → writers / Document output。
+6. ASR 文本规范化 → `transcription/normalization*`，平台只提供 `NormalizationHints`；
+7. 最终阅读结构 → writers / Document output。
 
 如果一个改动需要复制到多个 Adapter，先判断它是否其实属于共享层。
 

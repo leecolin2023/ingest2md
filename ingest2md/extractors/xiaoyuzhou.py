@@ -20,6 +20,7 @@ from ingest2md.netutils import DEFAULT_USER_AGENT
 from ingest2md.media.audio import probe_media_info
 from ingest2md.media.download import download_url
 from ingest2md.model import Document
+from ingest2md.transcription.normalization import NormalizationHints
 from ingest2md.transcription.service import transcribe_audio
 from ingest2md.transcription.writers import render_chaptered_markdown, render_markdown
 from ingest2md.urlutils import host_of
@@ -32,6 +33,11 @@ _AUDIO_RE = re.compile(r"https://media\.xyzcdn\.net/[^\"'\\\s<>]+\.(?:m4a|mp3|aa
 _CHAPTER_TIME_RE = re.compile(
     r"^(?P<time>(?:(?:\d{1,2}):)?\d{1,2}:\d{2})"
     r"\s*(?:[-–—:：]\s*)?(?P<title>.+?)\s*$"
+)
+_MARKDOWN_LINK_LABEL_RE = re.compile(r"\[([^\]]{2,64})\]\(https?://[^)]+\)", re.I)
+_LATIN_TERM_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:[A-Za-z][A-Za-z0-9.+_-]{1,31}|"
+    r"[0-9]+[A-Za-z][A-Za-z0-9.+_-]{0,31})(?![A-Za-z0-9])"
 )
 
 
@@ -61,10 +67,22 @@ class XiaoyuzhouExtractor:
             audio_path = download_url(meta["audio_url"], work / f"audio{suffix}")
             audio_info = probe_media_info(str(audio_path))
             _validate_episode_audio(audio_info, int(meta["duration"] or 0))
+            normalization_hints = build_normalization_hints(meta)
             transcript = (
-                    transcribe_audio(str(audio_path), work, settings, backend=self.runtime.asr_backend)
+                    transcribe_audio(
+                        str(audio_path),
+                        work,
+                        settings,
+                        backend=self.runtime.asr_backend,
+                        hints=normalization_hints,
+                    )
                     if self.runtime is not None
-                    else transcribe_audio(str(audio_path), work, settings)
+                    else transcribe_audio(
+                        str(audio_path),
+                        work,
+                        settings,
+                        hints=normalization_hints,
+                    )
                 )
 
             metadata = [("来源", "小宇宙")]
@@ -217,6 +235,66 @@ def parse_episode_page(html: str, url: str) -> dict[str, object]:
         "shownotes_md": shownotes_md,
         "canonical_url": canonical_url,
     }
+
+
+
+
+
+def _append_unique(values: list[str], value: str) -> None:
+    value = str(value or "").strip()
+    if value and value not in values:
+        values.append(value)
+
+
+def build_normalization_hints(meta: dict[str, object]) -> NormalizationHints:
+    """Turn public episode metadata into high-confidence generic normalization hints."""
+    title = str(meta.get("title") or "").strip()
+    podcast_title = str(meta.get("podcast_title") or "").strip()
+    description = str(meta.get("description") or "").strip()
+    shownotes = str(meta.get("shownotes_md") or "").strip()
+
+    people: list[str] = []
+    terms: list[str] = []
+
+    for raw_line in shownotes.splitlines():
+        line = re.sub(r"^\s*(?:#{1,6}\s+|[-*+>]\s+)+", "", raw_line).strip()
+        if not line:
+            continue
+
+        anchor = re.match(r"^主播[:：]\s*([^｜|，。,；;]{1,24})", line)
+        if anchor:
+            _append_unique(people, anchor.group(1))
+
+        person = re.match(r"^(?:主播[:：]\s*)?([^｜|]{1,24})[｜|]", line)
+        if person and not re.match(r"^\d{1,2}:\d{2}", person.group(1)):
+            _append_unique(people, person.group(1).strip())
+
+        for label in _MARKDOWN_LINK_LABEL_RE.findall(line):
+            _append_unique(terms, label)
+
+    lexical_source = "\n".join((title, podcast_title, shownotes))
+    lexical_source = re.sub(r"https?://\S+", " ", lexical_source)
+    for token in _LATIN_TERM_RE.findall(lexical_source):
+        if token.lower() in {"http", "https", "www", "com", "fm"}:
+            continue
+        if token[0].isupper() or token[0].isdigit() or token.isupper():
+            _append_unique(terms, token)
+
+    context_parts = []
+    if podcast_title:
+        context_parts.append(f"播客：{podcast_title}")
+    if description:
+        context_parts.append("节目简介：" + description[:1200])
+    if shownotes:
+        context_parts.append("Show Notes：" + shownotes[:2500])
+
+    return NormalizationHints(
+        source_type="xiaoyuzhou",
+        title=title,
+        context="\n".join(context_parts),
+        terms=tuple(terms[:80]),
+        people=tuple(people[:30]),
+    )
 
 
 def _audio_suffix(url: str) -> str:

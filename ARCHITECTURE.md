@@ -1,6 +1,6 @@
 # ingest2md Architecture
 
-本文描述 v0.9.3 当前主干的**实际架构与能力边界**。目标是让后续迭代先判断“应该扩展哪一层”，而不是继续在平台 Adapter 中堆重复基础设施。
+本文描述 v0.10.0 当前主干的**实际架构与能力边界**。目标是让后续迭代先判断“应该扩展哪一层”，而不是继续在平台 Adapter 中堆重复基础设施。
 
 ## 1. 产品定位
 
@@ -84,7 +84,7 @@ write_document()
 | `router.py` | Reference 规范化后按顺序选择 Adapter |
 | `extractors/` | 平台 / 内容类型语义 |
 | `runtime.py` | 长生命周期昂贵资源 |
-| `transcription/` | TranscriptResult、ASR backend、字幕转换与 writers |
+| `transcription/` | TranscriptResult、ASR backend、Transcript Normalization、字幕转换与 writers |
 | `media/` | 音频预处理、下载、平台媒体获取辅助 |
 | `model.py` | Document 与最终输出 writer |
 | `batch/` | manifest、SQLite 状态、串行调度 |
@@ -160,7 +160,8 @@ metadata / subtitle probe
 - 公共页面元数据解析；
 - Show Notes 提取；
 - 音频下载后的音轨 / 时长校验；
-- Show Notes 时间点 → 语义章节。
+- Show Notes 时间点 → 语义章节；
+- 标题 / Show Notes / 嘉宾 / 产品词 → 通用 `NormalizationHints`，用于提高 ASR 规范化质量。
 
 抖音额外做：
 
@@ -211,6 +212,41 @@ ASR chunk size != Markdown reading window
 ```
 
 v0.9.3 后，小宇宙还能用 Show Notes 时间点替换固定窗口，形成语义章节。
+
+### 7.1 Transcript Normalization
+
+v0.10.0 在统一 ASR 出口增加质量层：
+
+```text
+ASR backend
+  ↓
+Raw TranscriptResult
+  ↓
+basic normalization
+  ├─ basic mode → normalized transcript
+  └─ llm mode → constrained smart normalization
+  ↓
+writers / Document
+```
+
+Normalization 是通用 transcription 能力，不属于任何平台 Adapter。平台只可提供 `NormalizationHints`：
+
+```text
+source_type / title / context / terms / people
+```
+
+当前小宇宙会从公开元数据、Show Notes、嘉宾行、Markdown 链接标题和英文 / 混合术语中构造 hints；Normalizer 本身不知道“小宇宙”是什么。
+
+关键不变量：
+
+- 只能修改 segment 的 `text`；
+- segment 数量、顺序、`start/end` 不变；
+- 开启 normalization 时 `raw_text` 保留原始 ASR；
+- LLM 以固定 segment window 工作，只把前后相邻 segment 作为 context；
+- LLM 输出必须通过 id / 数量 / 文本长度校验；
+- 单个窗口失败时保留 basic 结果并记录 warning，不让成功 ASR 反向变成 ingestion failure。
+
+因此它仍属于 ingestion normalization，而不是摘要、翻译或内容重写。平台原生字幕不经过该链路。
 
 ## 8. RuntimeContext
 
@@ -389,11 +425,11 @@ failed
 
 ## 14. 当前架构结论
 
-v0.9.x 的关键变化不是“多支持了几个网站”，而是项目已经形成了四条稳定主轴：
+v0.9.x–v0.10.0 的关键变化不是“多支持了几个网站”，而是项目已经形成了四条稳定主轴：
 
 1. **Source-aware Router / Adapter**：平台差异被隔离；
 2. **Shared Engine / Runtime**：single 与 batch 共用执行核心，昂贵资源可复用；
-3. **Transcription abstraction**：字幕、ASR backend、Markdown presentation 解耦；
+3. **Transcription abstraction**：字幕、ASR backend、Normalization、Markdown presentation 解耦；
 4. **Durable Batch**：任务状态、恢复与错误隔离独立于平台。
 
 因此下一阶段不应该回到“继续堆平台脚本”的方向，而应优先补足上述抽象已经暴露出的真实缺口，同时继续保持产品边界。
