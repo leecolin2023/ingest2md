@@ -1,4 +1,4 @@
-# ingest2md v0.10.0 example configuration
+# ingest2md v0.10.1 example configuration
 
 # Local-first transcription. No paid API is required for the default path.
 asr_backend: "sensevoice"       # sensevoice | openai | llm

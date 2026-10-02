@@ -1,6 +1,6 @@
 # ingest2md Architecture
 
-本文描述 v0.10.0 当前主干的**实际架构与能力边界**。目标是让后续迭代先判断“应该扩展哪一层”，而不是继续在平台 Adapter 中堆重复基础设施。
+本文描述 v0.10.1 当前主干的**实际架构与能力边界**。目标是让后续迭代先判断“应该扩展哪一层”，而不是继续在平台 Adapter 中堆重复基础设施。
 
 ## 1. 产品定位
 
@@ -150,6 +150,16 @@ metadata / subtitle probe
 ```
 
 “有字幕时不下载音频”是默认优化；只有显式 `--keep-audio` 才可能额外下载。
+
+Bilibili 的元信息获取本身采用两层策略：
+
+```text
+official view API
+  ├─ success → metadata
+  └─ access / response failure → yt-dlp metadata fallback
+```
+
+其中“分 P 不存在”属于语义错误，不触发 fallback。yt-dlp fallback 与字幕 / 音频下载复用 Cookie 和请求头语义；音频下载启用续传、有限重试、fragment 重试和更长 socket timeout。无字幕进入 ASR 时，标题 / UP 主 / 简介作为通用 `NormalizationHints` 进入 Transcript Normalization。
 
 ### 6.3 Audio-first sources
 
