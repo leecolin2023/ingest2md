@@ -567,14 +567,199 @@ def test_youtube_metadata_from_subtitle_info_reuses_existing_info():
     assert meta["audio_formats"] == 1
 
 
+
+def test_bilibili_meta_falls_back_to_ytdlp_when_view_api_unavailable(monkeypatch):
+    import ingest2md.media.bilibili as source
+
+    monkeypatch.setattr(
+        source,
+        "_fetch_meta_from_api",
+        lambda bvid, part: (_ for _ in ()).throw(
+            source.BilibiliMetaUnavailableError("HTTP 412")
+        ),
+    )
+    called = {}
+
+    def fake_ytdlp(bvid, part, cookies_file=""):
+        called["args"] = (bvid, part, cookies_file)
+        return {
+            "bvid": bvid,
+            "part": part,
+            "title": "Fallback",
+            "uploader": "UP",
+            "duration": 42,
+            "desc": "",
+            "url": f"https://www.bilibili.com/video/{bvid}?p={part}",
+            "metadata_source": "yt-dlp",
+        }
+
+    monkeypatch.setattr(source, "_fetch_meta_from_ytdlp", fake_ytdlp)
+    meta = source.fetch_meta("BV1xx411c7mD", 2, cookies_file="/tmp/bili.txt")
+
+    assert called["args"] == ("BV1xx411c7mD", 2, "/tmp/bili.txt")
+    assert meta["metadata_source"] == "yt-dlp"
+
+
+def test_bilibili_meta_does_not_hide_missing_part(monkeypatch):
+    import ingest2md.media.bilibili as source
+
+    monkeypatch.setattr(
+        source,
+        "_fetch_meta_from_api",
+        lambda bvid, part: (_ for _ in ()).throw(ValueError("视频没有第 9 P")),
+    )
+    monkeypatch.setattr(
+        source,
+        "_fetch_meta_from_ytdlp",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("semantic errors must not trigger access fallback")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="第 9 P"):
+        source.fetch_meta("BV1xx411c7mD", 9)
+
+
+def test_bilibili_ytdlp_metadata_fallback_reuses_cookie_and_headers(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import ingest2md.media.bilibili as source
+
+    captured = {}
+
+    class FakeYDL:
+        def __init__(self, opts):
+            captured["opts"] = opts
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return None
+        def extract_info(self, url, download=False):
+            captured["url"] = url
+            captured["download"] = download
+            return {
+                "title": "yt-dlp title",
+                "uploader": "yt-dlp UP",
+                "duration": 12.8,
+                "description": "description",
+            }
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", SimpleNamespace(YoutubeDL=FakeYDL))
+    meta = source._fetch_meta_from_ytdlp(
+        "BV1xx411c7mD",
+        3,
+        cookies_file="/tmp/cookies.txt",
+    )
+
+    assert captured["opts"]["cookiefile"] == "/tmp/cookies.txt"
+    assert captured["opts"]["http_headers"]["Referer"] == "https://www.bilibili.com/"
+    assert captured["opts"]["skip_download"] is True
+    assert captured["url"].endswith("?p=3")
+    assert captured["download"] is False
+    assert meta["duration"] == 12
+    assert meta["metadata_source"] == "yt-dlp"
+
+
+def test_bilibili_audio_download_is_retry_friendly(monkeypatch, tmp_path: Path):
+    import sys
+    from types import SimpleNamespace
+    import ingest2md.media.bilibili as source
+
+    captured = {}
+
+    class FakeYDL:
+        def __init__(self, opts):
+            captured["opts"] = opts
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return None
+        def extract_info(self, url, download=True):
+            captured["url"] = url
+            return {"id": "demo", "ext": "m4a"}
+        def prepare_filename(self, info):
+            return str(tmp_path / "demo.m4a")
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", SimpleNamespace(YoutubeDL=FakeYDL))
+    path = source.download_audio(
+        "BV1xx411c7mD",
+        str(tmp_path),
+        cookies_file="/tmp/cookies.txt",
+        part=2,
+    )
+
+    opts = captured["opts"]
+    assert opts["continuedl"] is True
+    assert opts["retries"] == 20
+    assert opts["fragment_retries"] == 20
+    assert opts["socket_timeout"] == 60
+    assert opts["cookiefile"] == "/tmp/cookies.txt"
+    assert opts["http_headers"]["User-Agent"]
+    assert captured["url"].endswith("?p=2")
+    assert path.endswith("demo.m4a")
+
+
+def test_bilibili_asr_fallback_passes_source_normalization_hints(tmp_path: Path, monkeypatch):
+    import ingest2md.extractors.bilibili as bili
+
+    monkeypatch.setattr(bili.source, "resolve_video", lambda url: ("BV1xx411c7mD", 1))
+    monkeypatch.setattr(
+        bili.source,
+        "fetch_meta",
+        lambda bvid, part, cookies_file="": {
+            "title": "Agent 工程实践",
+            "uploader": "DemoUP",
+            "duration": 30,
+            "desc": "讨论 WorkBuddy 和 Agent",
+            "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=1",
+            "metadata_source": "yt-dlp",
+        },
+    )
+    monkeypatch.setattr(bili, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: None)
+
+    audio = tmp_path / "audio.m4a"
+    audio.write_bytes(b"fake")
+    monkeypatch.setattr(
+        bili.source,
+        "download_audio",
+        lambda *args, **kwargs: str(audio),
+    )
+
+    called = {}
+
+    def fake_asr(audio_path, work, settings, **kwargs):
+        called["hints"] = kwargs.get("hints")
+        return TranscriptResult([Segment(0, 30, "转写正文")], ["mock-asr"], 30)
+
+    monkeypatch.setattr(bili, "transcribe_audio", fake_asr)
+    monkeypatch.setattr(bili, "attach_video_description", lambda doc, desc: None)
+    monkeypatch.setattr(bili, "retain_media", lambda *args, **kwargs: None)
+
+    doc = asyncio.run(
+        bili.BilibiliExtractor(Settings(output_dir=str(tmp_path))).extract(
+            "https://www.bilibili.com/video/BV1xx411c7mD",
+            tmp_path,
+        )
+    )
+
+    hints = called["hints"]
+    assert hints.source_type == "bilibili"
+    assert hints.title == "Agent 工程实践"
+    assert hints.people == ("DemoUP",)
+    assert "WorkBuddy" in hints.context
+    assert dict(doc.metadata)["元信息获取"] == "yt-dlp fallback"
+
+
+
 def test_bilibili_subtitle_first_skips_asr(tmp_path: Path, monkeypatch):
     import ingest2md.extractors.bilibili as bili
     from ingest2md.media.subtitles import SubtitleCue, SubtitleTrack
 
     monkeypatch.setattr(bili.source, "resolve_video", lambda url: ("BV1xx411c7mD", 1))
-    monkeypatch.setattr(bili.source, "fetch_meta", lambda bvid, part: {
+    monkeypatch.setattr(bili.source, "fetch_meta", lambda bvid, part, cookies_file="": {
         "title": "Demo", "uploader": "UP", "duration": 10, "desc": "",
         "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=1",
+        "metadata_source": "view-api",
     })
     track = SubtitleTrack("zh-Hans", "manual", [SubtitleCue(0, 10, "你好")])
     monkeypatch.setattr(bili, "fetch_yt_dlp_subtitles", lambda *args, **kwargs: track)
