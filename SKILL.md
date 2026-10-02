@@ -99,8 +99,13 @@ ingest2md "<Content Reference>" --explain
 ### Bilibili
 
 - 支持单视频 / 分 P / BV 号；
+- 元信息优先使用官方 view API；API 因 412、网络或响应异常不可达时回退 yt-dlp；
+- “分 P 不存在”属于语义错误，应直接报错，不要用 fallback 掩盖；
+- yt-dlp 元信息 fallback 复用 Bilibili Cookie 与 Referer / User-Agent；
 - 字幕优先；
-- 无字幕才 ASR；
+- 无字幕才下载音频并进入 ASR；
+- 音频下载启用续传、有限重试、fragment 重试和较长 socket timeout；
+- ASR fallback 将标题 / UP 主 / 简介作为通用 `NormalizationHints`，平台字幕仍不做二次 Normalization；
 - 不做 UP 主空间 / 合集采集。
 
 ### 小宇宙
