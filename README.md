@@ -5,7 +5,7 @@
 `ingest2md` 的目标不是做一个“万能爬虫”，也不是直接做总结、RAG 或知识库。
 它负责的是更靠前、也更基础的一层：**识别内容来源 → 选择合适的采集方式 → 尽量保留原始语义 → 输出可移植 Markdown**。
 
-当前版本：**v0.10.0**。主干 CI 覆盖 Python 3.10 / 3.12。
+当前版本：**v0.10.1**。主干 CI 覆盖 Python 3.10 / 3.12。
 
 ## 1. 它解决什么问题
 
@@ -39,7 +39,7 @@ Markdown-first output
 | 知乎 | 已接入 | 问题或回答 URL → 归一到问题 → 尽可能收集可见回答 → 单个 Markdown | “尽可能多”不等于绝对抓全；登录态和动态加载会影响结果 |
 | 小红书 | 轻量接入 | 单篇笔记 → 浏览器渲染 → 正文 + 当前可取得图片 | 不做 OCR / Vision，不承诺登录墙后的内容 |
 | YouTube | 已接入 | 单视频 → 人工/自动字幕优先 → 无字幕才下载音频 → ASR | 不做频道 / 播放列表采集；访问可能受 Cookie、JS challenge、PO Token、网络出口影响 |
-| Bilibili | 已接入 | 单视频 / 分 P / BV 号 → 字幕优先 → ASR fallback | 不做 UP 主空间、合集批量采集 |
+| Bilibili | 已接入 | 单视频 / 分 P / BV 号 → 元信息 API 优先、yt-dlp fallback → 字幕优先 → ASR fallback | 不做 UP 主空间、合集批量采集 |
 | 小宇宙 | 已接入 | 公开单集 → Show Notes → 公开音频 → 校验 → ASR → source-aware Normalization → 章节化 Markdown | 只处理公开 episode；不接私有 API |
 | 抖音 | 轻量接入 | 单视频 / 分享短链 → Playwright → 详情响应 → DOM 直接媒体 → 浏览器网络媒体 fallback → 音轨/时长校验 → ASR | 不实现 `a_bogus` / `X-Bogus`、私有签名、主页/合集/评论/直播；三类候选均不可用或登录墙时失败 |
 | 微信视频号 | 仅识别 | 命中来源后明确提示改走本地文件 | 当前不自动获取媒体 |
@@ -373,6 +373,7 @@ CI 在 push 到 `main` 和 pull request 时运行 Python 3.10 / 3.12。
 
 ## 13. 最近版本
 
+- **v0.10.1**：增强 Bilibili 获取稳定性：官方 view API 不可达时回退 yt-dlp 元信息，音频下载支持续传 / 重试 / 更长超时，并在 ASR fallback 注入 Bilibili source hints；
 - **v0.10.0**：新增通用 Transcript Normalization；默认 basic 本地规范化，可选 LLM 校对；保留 raw transcript；小宇宙利用 Show Notes / 嘉宾 / 产品名注入 source hints；
 - **v0.9.3**：长音频展示结构与 ASR chunk 解耦；小宇宙加入音频完整性校验和 Show Notes 章节化转写；
 - **v0.9.2**：Batch TXT 升级为自由文本 Reference scanner；
