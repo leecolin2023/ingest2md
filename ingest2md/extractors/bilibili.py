@@ -12,6 +12,7 @@ from ingest2md.extractors.video import attach_video_description, retain_media
 from ingest2md.media import bilibili as source
 from ingest2md.media.subtitles import fetch_yt_dlp_subtitles
 from ingest2md.model import Document
+from ingest2md.transcription.normalization import NormalizationHints
 from ingest2md.transcription.service import transcribe_audio
 from ingest2md.transcription.subtitles import subtitles_to_transcript
 from ingest2md.transcription.writers import render_markdown
@@ -21,11 +22,25 @@ logger = logging.getLogger(__name__)
 _BILIBILI_HOSTS = {"www.bilibili.com", "bilibili.com", "m.bilibili.com", "b23.tv"}
 
 
+
+
+def _build_normalization_hints(meta: dict) -> NormalizationHints:
+    """Use already-acquired Bilibili metadata as generic ASR normalization context."""
+    uploader = str(meta.get("uploader") or "").strip()
+    return NormalizationHints(
+        source_type="bilibili",
+        title=str(meta.get("title") or "").strip(),
+        context=str(meta.get("desc") or "").strip()[:2500],
+        people=((uploader,) if uploader else ()),
+    )
+
+
 class BilibiliExtractor:
     name = "Bilibili 视频"
-    description = "Bilibili / BV号 → 字幕优先；无字幕时默认 SenseVoice 本地 ASR"
+    description = "Bilibili / BV号 → 稳健元信息 → 字幕优先；无字幕时默认 SenseVoice 本地 ASR"
     acquisition_plan = (
         "解析 BV 号和分 P",
+        "元信息优先官方 view API；不可达时回退 yt-dlp",
         "优先探测平台字幕",
         "有字幕则直接保留原语言，不调用 ASR/LLM",
         "无字幕时使用配置 ASR backend（默认 SenseVoice ONNX 本地）",
@@ -48,7 +63,7 @@ class BilibiliExtractor:
             raise ValueError(f"Cookie 文件不存在: {cookies_file}")
 
         bvid, part = source.resolve_video(url)
-        meta = source.fetch_meta(bvid, part)
+        meta = source.fetch_meta(bvid, part, cookies_file=cookies_file)
         with tempfile.TemporaryDirectory(prefix="ingest2md-bili-") as temp:
             work = Path(temp)
             try:
@@ -67,10 +82,22 @@ class BilibiliExtractor:
             else:
                 logger.info("未找到可用字幕；下载 Bilibili 音频并使用 %s ASR", settings.asr_backend)
                 audio_path = source.download_audio(bvid, temp, cookies_file, part)
+                hints = _build_normalization_hints(meta)
                 transcript = (
-                    transcribe_audio(audio_path, work, settings, backend=self.runtime.asr_backend)
+                    transcribe_audio(
+                        audio_path,
+                        work,
+                        settings,
+                        backend=self.runtime.asr_backend,
+                        hints=hints,
+                    )
                     if self.runtime is not None
-                    else transcribe_audio(audio_path, work, settings)
+                    else transcribe_audio(
+                        audio_path,
+                        work,
+                        settings,
+                        hints=hints,
+                    )
                 )
                 acquisition = f"音频下载 + {settings.asr_backend} ASR fallback"
 
@@ -80,6 +107,12 @@ class BilibiliExtractor:
                 metadata=[
                     ("UP主", meta["uploader"]),
                     ("时长（秒）", str(meta["duration"])),
+                    (
+                        "元信息获取",
+                        "官方 view API"
+                        if meta.get("metadata_source") == "view-api"
+                        else "yt-dlp fallback",
+                    ),
                     ("内容获取", acquisition),
                     ("已处理（秒）", str(transcript.processed_seconds)),
                     ("处理时间", datetime.now(timezone.utc).isoformat(timespec="seconds")),
