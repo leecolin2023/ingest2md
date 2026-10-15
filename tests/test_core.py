@@ -823,6 +823,8 @@ def test_sensevoice_backend_owns_wav_chunking(tmp_path: Path, monkeypatch):
 
     model_dir = tmp_path / "model"
     model_dir.mkdir()
+    for filename in ("model_quant.onnx", "config.yaml", "am.mvn", "chn_jpn_yue_eng_ko_spectok.bpe.model"):
+        (model_dir / filename).write_bytes(b"fixture")
     called = {"chunks": False, "model": False}
 
     def fake_chunks(audio, seconds, limit, out_dir):
@@ -864,6 +866,8 @@ def test_sensevoice_true_batching_preserves_chunk_order(tmp_path: Path, monkeypa
 
     model_dir = tmp_path / "model"
     model_dir.mkdir()
+    for filename in ("model_quant.onnx", "config.yaml", "am.mvn", "chn_jpn_yue_eng_ko_spectok.bpe.model"):
+        (model_dir / filename).write_bytes(b"fixture")
     chunks = []
     for index in range(5):
         path = tmp_path / f"chunk_{index:04d}.wav"
@@ -1467,6 +1471,8 @@ def test_sensevoice_backend_reuses_loaded_model_across_files(tmp_path: Path, mon
 
     model_dir = tmp_path / "model"
     model_dir.mkdir()
+    for filename in ("model_quant.onnx", "config.yaml", "am.mvn", "chn_jpn_yue_eng_ko_spectok.bpe.model"):
+        (model_dir / filename).write_bytes(b"fixture")
     chunk = tmp_path / "chunk.wav"
     chunk.write_bytes(b"fake")
     monkeypatch.setattr(

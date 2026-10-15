@@ -1,6 +1,6 @@
 # ingest2md Architecture
 
-本文描述 v0.10.1 当前主干的**实际架构与能力边界**。目标是让后续迭代先判断“应该扩展哪一层”，而不是继续在平台 Adapter 中堆重复基础设施。
+本文描述 v0.10.2 当前主干的**实际架构与能力边界**。目标是让后续迭代先判断“应该扩展哪一层”，而不是继续在平台 Adapter 中堆重复基础设施。
 
 ## 1. 产品定位
 
@@ -443,3 +443,13 @@ v0.9.x–v0.10.0 的关键变化不是“多支持了几个网站”，而是项
 4. **Durable Batch**：任务状态、恢复与错误隔离独立于平台。
 
 因此下一阶段不应该回到“继续堆平台脚本”的方向，而应优先补足上述抽象已经暴露出的真实缺口，同时继续保持产品边界。
+
+
+## SenseVoice 推理运行时边界（v0.10.2）
+
+- `local-asr` 是 **推理 extra**，不包含 `funasr` 训练/导出或 `onnxscript`；`funasr-onnx==0.4.3` 提供 ONNX Runtime 与 Kaldi fbank 的间接依赖。
+- 默认从 `iic/SenseVoiceSmall-onnx` 获取预导出权重，并从原始模型只取缺失的 SentencePiece tokenizer；显式 `sensevoice_model_dir` 不自动修改。
+- 模型文件不存在时明确失败；不让上游 `funasr_onnx` 隐式触发 ONNX 导出。
+- `funasr_onnx_compat.adapt_session()` 在 `SenseVoiceSmall` 初始化后，仅检查当前 session 的输入输出 schema：双输出不改变；四输入单输出仅对实例 `run` 补回输出长度。
+- 输出时间维与输入 padding 时间维的差值用于推断附加控制帧；batch 内逐样本有效长度 + 该差值，再裁剪到输出张量长度。保留上游解码的 CTC 行为。
+- `SenseVoiceBackend._run_model` 首选 `textnorm=withitn/woitn`；不修改平台字幕、Transcript Normalization、Engine / Batch 语义。

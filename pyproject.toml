@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ingest2md"
-version = "0.10.1"
+version = "0.10.2"
 description = "Source-aware content ingestion for AI/agents: turn web, media and documents into portable Markdown."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,9 +21,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8"]
+test = ["pytest>=8", "numpy>=1.23.2,<2"]
 documents = ["markitdown[pdf,docx,pptx,xlsx]"]
-local-asr = ["funasr-onnx", "onnxruntime", "modelscope", "funasr", "onnxscript"]
+# Inference-only; funasr-onnx provides onnxruntime, kaldi-native-fbank,
+# scipy, librosa and sentencepiece transitively. Export stacks are excluded.
+local-asr = ["funasr-onnx==0.4.3", "modelscope"]
 
 [project.scripts]
 ingest2md = "ingest2md.cli:main"
