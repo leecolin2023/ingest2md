@@ -265,3 +265,12 @@ manifest：
 如果一个改动需要复制到多个 Adapter，先判断它是否其实属于共享层。
 
 详细架构与边界见 `ARCHITECTURE.md`；安装、配置与用户命令见 `README.md`。
+
+
+### SenseVoice ONNX 兼容与依赖
+
+- local-asr 只安装推理栈：`funasr-onnx==0.4.3` + `modelscope`，不要引入 `funasr` / `onnxscript` 模型导出依赖。
+- 默认模型必须是预导出的 ONNX 权重；缺失时不要静默导出，应给出明确缺失文件。
+- 单输出四输入 SenseVoice 图允许当前 session 局部适配；双输出图绝不改写；不得全局 patch 其他 ONNX Runtime 会话。
+- 保证 batch 下有效长度包含附加控制帧并限定在 logits 时间长度以内；ITN 传 `textnorm`。
+- 通用 adapter FakeSession 回归必须在默认 CI 运行，`local-asr` 安装/import 另设 CI，不通过整模块 skip 隐藏兼容性测试。
