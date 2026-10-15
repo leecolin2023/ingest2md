@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ingest2md"
+version = "0.10.1"
+description = "Source-aware content ingestion for AI/agents: turn web, media and documents into portable Markdown."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "beautifulsoup4",
+  "camoufox",
+  "httpx",
+  "markdownify",
+  "playwright",
+  "PyYAML",
+  "requests",
+  "trafilatura",
+  "yt-dlp",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+documents = ["markitdown[pdf,docx,pptx,xlsx]"]
+# SenseVoice needs `funasr_onnx`'s WavFrontend, which imports
+# `kaldi_native_fbank`. That project does publish Windows x64 wheels for
+# CPython 3.9-3.13, so pin it explicitly and let pip fail loudly rather than
+# silently falling back to a C++ source build.
+local-asr = [
+  "funasr-onnx",
+  "onnxruntime",
+  "kaldi-native-fbank",
+  "modelscope",
+  "funasr",
+  "onnxscript",
+]
+
+[project.scripts]
+ingest2md = "ingest2md.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ingest2md*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

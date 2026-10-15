@@ -1,0 +1,49 @@
+# ingest2md v0.10.1 example configuration
+
+# Local-first transcription. No paid API is required for the default path.
+asr_backend: "sensevoice"       # sensevoice | openai | llm
+asr_language: "auto"
+limit_seconds: 0
+subtitle_window_seconds: 300
+transcript_window_seconds: 300  # Markdown 阅读窗口；与 ASR chunk 解耦
+
+# Transcript normalization. basic is local/deterministic; llm is optional.
+transcript_normalization: "basic"  # off | basic | llm
+normalization_model: ""            # empty -> llm_model
+normalization_window_segments: 8
+
+# SenseVoice ONNX. Leave model_dir empty to download iic/SenseVoiceSmall on first use.
+sensevoice_model_dir: ""
+sensevoice_chunk_seconds: 30
+sensevoice_batch_size: 2
+sensevoice_quantize: true
+
+# Optional OpenAI-compatible /audio/transcriptions backend.
+openai_asr_base_url: "https://api.openai.com/v1"
+openai_asr_api_key: ""
+openai_asr_model: "gpt-4o-transcribe"
+openai_asr_chunk_seconds: 1200
+openai_asr_timeout: 600
+asr_prompt: ""
+
+# Optional multimodal LLM audio backend.
+# Opencode is only the default example; replace base_url/model/key for another compatible provider.
+llm_base_url: "https://opencode.ai/zen/go/v1"
+llm_api_key: ""
+llm_model: "mimo-v2.5"
+llm_api: "chat"                # chat | responses
+llm_chunk_seconds: 300
+llm_candidates: []
+
+output_dir: "output"
+formats: ["md"]
+max_answers: 0
+keep_audio: false
+keep_chunks: false
+
+cookies_file: ""
+youtube_cookies_file: ""
+bilibili_cookies_file: ""
+zhihu_cookies_file: ""
+xiaohongshu_cookies_file: ""
+douyin_cookies_file: ""
