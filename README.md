@@ -5,7 +5,7 @@
 `ingest2md` 的目标不是做一个“万能爬虫”，也不是直接做总结、RAG 或知识库。
 它负责的是更靠前、也更基础的一层：**识别内容来源 → 选择合适的采集方式 → 尽量保留原始语义 → 输出可移植 Markdown**。
 
-当前版本：**v0.10.1**。主干 CI 覆盖 Python 3.10 / 3.12。
+当前版本：**v0.10.2**。主干 CI 覆盖 Python 3.10 / 3.12。
 
 ## 1. 它解决什么问题
 
@@ -131,7 +131,9 @@ python -m pip install -e ".[local-asr]"
 ```
 
 并确保系统可调用 `ffmpeg` / `ffprobe`。
-首次实际使用 SenseVoice 时会自动下载 / 定位 `iic/SenseVoiceSmall`；也可以用 `sensevoice_model_dir` 指向已准备好的模型目录。
+首次本地 ASR 会获取预导出的 `iic/SenseVoiceSmall-onnx` 推理权重，并从 `iic/SenseVoiceSmall` 仅补齐解码需要的 SentencePiece 文件。不会在使用时自动导出 ONNX，因此 `.[local-asr]` 不需要 `funasr`、`onnxscript` 或 PyTorch 导出栈。也可以用 `sensevoice_model_dir` 指向已准备好的模型目录（需含与 `sensevoice_quantize` 对应的 `model_quant.onnx` / `model.onnx`、`config.yaml`、`am.mvn` 和 `chn_jpn_yue_eng_ko_spectok.bpe.model`）。首次下载仍需要网络；完全离线使用请预先准备好这些文件。
+
+兼容层仅在识别到四输入、单输出的 SenseVoice ONNX 图时适配 `encoder_out_lens`；两输出图保持原样。ITN 使用 `textnorm=withitn/woitn`。不通过全局 monkey-patch 修改 `funasr-onnx`。
 
 ### 文档转换
 
@@ -359,7 +361,7 @@ python -m pytest -q
 ingest2md --help
 ```
 
-CI 在 push 到 `main` 和 pull request 时运行 Python 3.10 / 3.12。
+CI 在 push 到 `main` 和 pull request 时运行 Python 3.10 / 3.12，并对 `.[local-asr,test]` 做干净安装、`pip check`、运行时导入和兼容层测试（不下载大模型）。
 当前主干 CI 与回归基线见 [TEST_REPORT.md](TEST_REPORT.md)。
 
 新增来源时优先遵循以下规则：
@@ -373,6 +375,7 @@ CI 在 push 到 `main` 和 pull request 时运行 Python 3.10 / 3.12。
 
 ## 13. 最近版本
 
+- **v0.10.2**：修复 SenseVoice 单输出 ONNX 解码兼容、ITN 参数和预导出权重发现；精简 `local-asr` 推理依赖并增加独立安装 CI；
 - **v0.10.1**：增强 Bilibili 获取稳定性：官方 view API 不可达时回退 yt-dlp 元信息，音频下载支持续传 / 重试 / 更长超时，并在 ASR fallback 注入 Bilibili source hints；
 - **v0.10.0**：新增通用 Transcript Normalization；默认 basic 本地规范化，可选 LLM 校对；保留 raw transcript；小宇宙利用 Show Notes / 嘉宾 / 产品名注入 source hints；
 - **v0.9.3**：长音频展示结构与 ASR chunk 解耦；小宇宙加入音频完整性校验和 Show Notes 章节化转写；
