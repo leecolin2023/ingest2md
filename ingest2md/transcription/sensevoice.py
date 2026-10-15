@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+import shutil
 import time
 from pathlib import Path
 
@@ -30,6 +31,7 @@ def _import_runtime():
 
 
 def _resolve_model_dir(settings: Settings) -> Path:
+    """Use inference-ready ONNX weights; do not export models at runtime."""
     if settings.sensevoice_model_dir:
         path = Path(settings.sensevoice_model_dir).expanduser().resolve()
         if not path.is_dir():
@@ -39,11 +41,41 @@ def _resolve_model_dir(settings: Settings) -> Path:
         from modelscope import snapshot_download
     except ImportError as exc:
         raise ImportError(
-            '首次自动下载 SenseVoiceSmall 需要 modelscope；请安装：'
-            'python -m pip install "ingest2md[local-asr]"'
+            '首次下载预导出的 ONNX 模型需要 modelscope，请安装 "ingest2md[local-asr]"'
         ) from exc
-    logger.info("首次使用本地 ASR：下载/定位 SenseVoiceSmall 模型")
-    return Path(snapshot_download("iic/SenseVoiceSmall")).resolve()
+
+    logger.info("首次使用本地 ASR：下载/定位预导出的 SenseVoiceSmall ONNX")
+    model_dir = Path(snapshot_download("iic/SenseVoiceSmall-onnx")).resolve()
+    tokenizer = model_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model"
+    if not tokenizer.is_file():
+        # The official ONNX-only snapshot may include tokens.json but not the
+        # SentencePiece BPE file required by funasr_onnx's decoder.
+        source = Path(
+            snapshot_download(
+                "iic/SenseVoiceSmall",
+                allow_file_pattern=["chn_jpn_yue_eng_ko_spectok.bpe.model"],
+            )
+        ).resolve() / tokenizer.name
+        if not source.is_file():
+            raise FileNotFoundError(f"SenseVoice tokenizer missing from official model: {source}")
+        shutil.copy2(source, tokenizer)
+    return model_dir
+
+
+def _validate_onnx_model(model_dir: Path, quantize: bool) -> None:
+    """Fail clearly instead of letting funasr_onnx auto-import the export stack."""
+    required = "model_quant.onnx" if quantize else "model.onnx"
+    model_path = model_dir / required
+    if not model_path.is_file():
+        raise FileNotFoundError(
+            f"SenseVoice 推理权重不存在: {model_path}；请准备预导出的 ONNX，"
+            "或在配置中选择与权重对应的 sensevoice_quantize 值。"
+            "ingest2md 不会在运行时自动导出 ONNX。"
+        )
+    for name in ("config.yaml", "am.mvn", "chn_jpn_yue_eng_ko_spectok.bpe.model"):
+        if not (model_dir / name).is_file():
+            raise FileNotFoundError(f"SenseVoice 运行文件缺失: {model_dir / name}")
+
 
 
 def _extract_text(result) -> str:
@@ -104,6 +136,7 @@ class SenseVoiceBackend:
             return self._model, self._postprocess
 
         model_dir = _resolve_model_dir(settings)
+        _validate_onnx_model(model_dir, settings.sensevoice_quantize)
         SenseVoiceSmall, postprocess = _import_runtime()
         logger.info(
             "加载本地 SenseVoiceSmall ONNX: %s (chunk=%ss, batch=%s, quantize=%s)",
@@ -115,33 +148,36 @@ class SenseVoiceBackend:
             batch_size=settings.sensevoice_batch_size,
             quantize=settings.sensevoice_quantize,
         )
+        session = getattr(getattr(self._model, "ort_infer", None), "session", None)
+        if session is not None:
+            from ingest2md.transcription.funasr_onnx_compat import adapt_session
+
+            status = adapt_session(session)
+            logger.info("SenseVoice ONNX 兼容层: %s", status)
         self._postprocess = postprocess
         self._model_config = config
         return self._model, self._postprocess
 
     @staticmethod
     def _run_model(model, audio_paths: list[str], language: str, use_itn: bool = True):
-        """Prefer true list input; retain single-file fallbacks for older runtimes."""
+        """Prefer textnorm, the parameter understood by funasr_onnx 0.4.3."""
         paths = list(audio_paths)
-        attempts = [
-            lambda: model(paths, language=language, use_itn=use_itn),
-        ]
+        textnorm = "withitn" if use_itn else "woitn"
+        tag_variants = (
+            {"language": language, "textnorm": textnorm},
+            {"language": language, "use_itn": use_itn},
+        )
+        attempts = [lambda kw=kw: model(paths, **kw) for kw in tag_variants]
         generate = getattr(model, "generate", None)
         if generate:
-            attempts.extend([
-                lambda: generate(input=paths, language=language, use_itn=use_itn),
-                lambda: generate(paths, language=language, use_itn=use_itn),
-            ])
+            attempts.extend(lambda kw=kw: generate(input=paths, **kw) for kw in tag_variants)
+            attempts.extend(lambda kw=kw: generate(paths, **kw) for kw in tag_variants)
         if len(paths) == 1:
             path = paths[0]
-            attempts.extend([
-                lambda: model(path, language=language, use_itn=use_itn),
-            ])
+            attempts.extend(lambda kw=kw: model(path, **kw) for kw in tag_variants)
             if generate:
-                attempts.extend([
-                    lambda: generate(input=path, language=language, use_itn=use_itn),
-                    lambda: generate(path, language=language, use_itn=use_itn),
-                ])
+                attempts.extend(lambda kw=kw: generate(input=path, **kw) for kw in tag_variants)
+                attempts.extend(lambda kw=kw: generate(path, **kw) for kw in tag_variants)
         last_error = None
         for attempt in attempts:
             try:
