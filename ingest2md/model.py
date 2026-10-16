@@ -1,12 +1,14 @@
 """Shared lightweight data model and output writer."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from ingest2md.source_index import SOURCE_INDEX_FILENAME
 from ingest2md.transcription.model import TranscriptResult
 
 _UNSAFE_FILENAME_CHARS = re.compile(r'[/\\?%*:|"<>\x00-\x1f]')
@@ -86,6 +88,10 @@ def write_document(doc: Document, output_dir: Path, formats=("md",)) -> Path:
     else:
         doc_dir = output_dir
         md_path = output_dir / f"{doc.dirname}.md"
+        if md_path.name.casefold() == SOURCE_INDEX_FILENAME.casefold():
+            # sources.md is exclusively reserved for the generated source index.
+            digest = hashlib.sha256(doc.source_url.encode("utf-8")).hexdigest()[:12]
+            md_path = output_dir / f"{doc.dirname}__{digest}.md"
     md_path.write_text(doc.build_markdown(), encoding="utf-8")
 
     if "txt" in formats:
