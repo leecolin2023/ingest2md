@@ -1,6 +1,7 @@
 """Application core: one content reference -> one written document."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,6 +9,9 @@ from ingest2md.config import Settings
 from ingest2md.model import Document, write_document
 from ingest2md.router import find_extractor, normalize_reference
 from ingest2md.runtime import RuntimeContext
+from ingest2md.source_index import record_source
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,17 @@ class IngestionEngine:
         )
         document = await extractor.extract(reference, self.output_dir)
         output_path = write_document(document, self.output_dir, self.settings.formats)
+
+        source_link = (
+            document.source_url
+            if (document.source_url or "").startswith(("http://", "https://"))
+            else reference
+        )
+        try:
+            record_source(self.output_dir, source_link, type(extractor).__name__, output_path)
+        except Exception as exc:
+            # 索引写入失败不能影响已经完成的转写。
+            logger.warning("sources.md 更新失败（不影响本次转写）: %s", exc)
 
         canonical_key = (
             f"{document.source_type}:{document.source_id}"
