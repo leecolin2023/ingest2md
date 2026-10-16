@@ -12,6 +12,7 @@ dependencies = [
   "beautifulsoup4",
   "camoufox",
   "httpx",
+  "filelock>=3.12,<4",
   "markdownify",
   "playwright",
   "PyYAML",
