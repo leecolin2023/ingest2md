@@ -18,15 +18,17 @@ _SYSTEM_PROMPT = """你是逐字稿校对器，不是编辑、总结器或改写
 允许：恢复标点、修复明显的专有名词/英文拼写、合并被错误拆开的英文缩写、修复明显的 ASR 同音误识别。
 禁止：总结、删减观点、补充事实、改变语气、翻译、重写论证、猜测音频中不存在的内容。
 
-必须遵守：
-1. 只返回 JSON，不要输出 Markdown 或解释。
-2. 输出 segments 数量、id 与输入 target_segments 完全一致。
-3. 不得修改时间戳；时间戳不在你的输出字段中。
-4. 上下文段只用于理解，不能出现在输出中。
-5. source_hints 只是高置信参考，不确定时保留原文。
+你必须采用“局部补丁”方式，不得返回整段改写后的文本：
+1. 只返回 JSON 对象，格式为 {"edits":[{"id":0,"old":"原文中的精确片段","new":"替换后的片段"}]}。
+2. id 必须是 target_segments 中的整数 id；只能修改 target_segments，不能修改 context_before/context_after。
+3. old 必须是对应 target segment.text 中连续、逐字一致的子串，并且在该段中只出现一次。
+4. old 不得等于整段原文；new 只能是替换 old 的局部结果，不得返回整段文本。
+5. old 和 new 都不能为空；new 不得包含换行，且不要用过长文本替换短片段。不确定时不要提交该条修改。
+6. 不要借校对之名删除内容或添加事实。不要修改时间戳。
+7. 若无需修改，返回 {"edits":[]}。source_hints 只是高置信参考，不确定时保留原文。
 """
 
-_CODE_FENCE_RE = re.compile(r"^\s*\`\`\`(?:json)?\s*|\s*\`\`\`\s*$", re.I)
+_CODE_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.I)
 
 
 def _headers(settings: Settings, session_id: str) -> dict[str, str]:
@@ -102,41 +104,126 @@ def _parse_json(text: str) -> dict:
     return data
 
 
-def _validate_window(
+def _validate_and_apply_edits(
     data: dict,
     expected_ids: list[int],
     source_texts: list[str],
-) -> list[str]:
-    items = data.get("segments")
-    if not isinstance(items, list) or len(items) != len(expected_ids):
-        raise RuntimeError("LLM normalization segment 数量异常")
+) -> tuple[list[str], list[str]]:
+    """Validate localized edits and apply only exact, non-overlapping source spans."""
+    edits = data.get("edits")
+    if not isinstance(edits, list):
+        raise RuntimeError("LLM normalization 输出缺少 edits 数组")
+    if len(expected_ids) != len(source_texts):
+        raise RuntimeError("LLM normalization 内部 segment 映射长度不一致")
 
-    by_id: dict[int, str] = {}
-    for item in items:
+    source_by_id = dict(zip(expected_ids, source_texts))
+    output = list(source_texts)
+    warnings: list[str] = []
+    candidates: list[dict[str, int | str]] = []
+
+    def reject(number: int, segment_id: object, reason: str) -> None:
+        warnings.append(
+            f"edit #{number} (segment id={segment_id}) 已拒绝：{reason}"
+        )
+
+    for number, item in enumerate(edits, start=1):
         if not isinstance(item, dict):
-            raise RuntimeError("LLM normalization segment 结构异常")
-        try:
-            item_id = int(item.get("id"))
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError("LLM normalization segment id 非法") from exc
-        normalized = item.get("text")
-        if not isinstance(normalized, str) or not normalized.strip():
-            raise RuntimeError("LLM normalization 返回空文本")
-        by_id[item_id] = normalized.strip()
+            reject(number, "?", "修改项不是对象")
+            continue
 
-    if set(by_id) != set(expected_ids):
-        raise RuntimeError("LLM normalization 修改了 segment id")
+        segment_id = item.get("id")
+        if type(segment_id) is not int:
+            reject(number, segment_id, "id 必须是整数")
+            continue
+        if segment_id not in source_by_id:
+            reject(number, segment_id, "id 不属于本次 target_segments")
+            continue
 
-    output = [by_id[item_id] for item_id in expected_ids]
-    before = sum(len(value.strip()) for value in source_texts)
-    after = sum(len(value.strip()) for value in output)
-    if before > 0:
-        ratio = after / before
-        if ratio < 0.45 or ratio > 2.0:
-            raise RuntimeError(
-                f"LLM normalization 文本长度变化异常: {ratio:.2f}x"
+        old = item.get("old")
+        new = item.get("new")
+        if not isinstance(old, str) or not old.strip():
+            reject(number, segment_id, "old 必须是非空原文片段")
+            continue
+        if not isinstance(new, str) or not new.strip():
+            reject(number, segment_id, "new 必须是非空替换文本")
+            continue
+        if "\n" in new or "\r" in new:
+            reject(number, segment_id, "new 不得跨行或重写 segment 结构")
+            continue
+        if old == new:
+            continue
+
+        source = source_by_id[segment_id]
+        if old == source:
+            reject(number, segment_id, "不允许把整段文本作为替换范围")
+            continue
+        occurrences = source.count(old)
+        if occurrences != 1:
+            reject(
+                number,
+                segment_id,
+                f"old 在原文中出现 {occurrences} 次，无法唯一定位",
             )
-    return output
+            continue
+        if len(new) >= len(source):
+            reject(number, segment_id, "new 长度不小于整段原文，疑似整段改写")
+            continue
+        if len(new) > max(24, len(old) * 4):
+            reject(number, segment_id, "new 过长，疑似非局部替换")
+            continue
+
+        start = source.find(old)
+        candidates.append({
+            "number": number,
+            "id": segment_id,
+            "start": start,
+            "end": start + len(old),
+            "old": old,
+            "new": new,
+        })
+
+    # If two proposed patches touch overlapping source spans, reject both rather
+    # than letting model output order decide which edit wins.
+    conflicting: set[int] = set()
+    for left in range(len(candidates)):
+        a = candidates[left]
+        for right in range(left + 1, len(candidates)):
+            b = candidates[right]
+            if a["id"] != b["id"]:
+                continue
+            if max(a["start"], b["start"]) < min(a["end"], b["end"]):
+                conflicting.update((left, right))
+
+    for index in sorted(conflicting):
+        candidate = candidates[index]
+        reject(
+            int(candidate["number"]),
+            candidate["id"],
+            "与同一 segment 的另一条修改范围重叠",
+        )
+
+    accepted = [
+        candidate
+        for index, candidate in enumerate(candidates)
+        if index not in conflicting
+    ]
+    index_by_id = {segment_id: index for index, segment_id in enumerate(expected_ids)}
+    for segment_id in expected_ids:
+        text = source_by_id[segment_id]
+        segment_edits = sorted(
+            (edit for edit in accepted if edit["id"] == segment_id),
+            key=lambda edit: int(edit["start"]),
+            reverse=True,
+        )
+        for edit in segment_edits:
+            start = int(edit["start"])
+            end = int(edit["end"])
+            # Positions were validated against the untouched source, and
+            # right-to-left application keeps all remaining positions stable.
+            text = text[:start] + str(edit["new"]) + text[end:]
+        output[index_by_id[segment_id]] = text
+
+    return output, warnings
 
 
 def _normalize_window(
@@ -147,8 +234,9 @@ def _normalize_window(
     settings: Settings,
     model: str,
     session_id: str,
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     ids = list(range(start, end))
+    source_texts = [segments[index].text for index in ids]
     request = {
         "source_hints": {
             "source_type": hints.source_type,
@@ -164,10 +252,13 @@ def _normalize_window(
         ],
         "context_after": segments[end].text if end < len(segments) else "",
         "required_output": {
-            "segments": [
-                {"id": index, "text": "<normalized text>"}
-                for index in ids
-            ]
+            "edits": [
+                {
+                    "id": ids[0],
+                    "old": "<exact, unique substring from that segment>",
+                    "new": "<replacement for that substring>",
+                }
+            ] if ids else []
         },
     }
     user_text = json.dumps(request, ensure_ascii=False)
@@ -203,11 +294,7 @@ def _normalize_window(
         )
 
     parsed = _parse_json(_extract_response_text(data, settings.llm_api))
-    return _validate_window(
-        parsed,
-        ids,
-        [segments[index].text for index in ids],
-    )
+    return _validate_and_apply_edits(parsed, ids, source_texts)
 
 
 def normalize_segments_with_llm(
@@ -215,7 +302,7 @@ def normalize_segments_with_llm(
     hints: NormalizationHints,
     settings: Settings,
 ) -> tuple[list[str], str, list[str]]:
-    """Best-effort smart normalization with per-window fallback."""
+    """Best-effort patch-based normalization with per-window basic fallback."""
     if not settings.llm_api_key.strip():
         raise ValueError("transcript_normalization=llm 但未配置 llm_api_key")
 
@@ -231,7 +318,7 @@ def normalize_segments_with_llm(
     for start in range(0, len(segments), window):
         end = min(len(segments), start + window)
         try:
-            normalized = _normalize_window(
+            normalized, edit_warnings = _normalize_window(
                 segments,
                 start,
                 end,
@@ -241,6 +328,10 @@ def normalize_segments_with_llm(
                 session_id,
             )
             output[start:end] = normalized
+            warnings.extend(
+                f"segments {start + 1}-{end}: {warning}"
+                for warning in edit_warnings
+            )
         except Exception as exc:
             warnings.append(
                 f"segments {start + 1}-{end} 保留 basic 结果: {exc}"
