@@ -173,6 +173,8 @@ ingest2md batch sources.jsonl -o output/batch --resume --retry-failed
 - `CSV`：至少包含 `source`，可选 `name,tags`；
 - `JSONL`：每行一个对象，必须有 `source`，可选 `name,tags`。
 
+**默认入口的非文件输入会自动走批量**：`ingest2md "链接 / App 分享文案..."` 会先把本次输入写入输出目录的 `source.txt`（每次执行前清空重写），再按批量入口处理；`.txt / .csv / .jsonl` 清单文件也可直接传给默认入口（等价于 `ingest2md batch <file>`）。本地音视频/文档文件仍按单条处理。
+
 批量状态保存在输出目录的 `.ingest2md-batch.sqlite3`。
 
 > 当前 `name/tags` 会进入 Batch 任务状态，但**还不会修改最终 Document 标题、正文或文件名**。它们目前属于任务元数据，而不是输出语义。

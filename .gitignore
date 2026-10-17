@@ -33,6 +33,10 @@ temp/
 chunks/
 *.part
 
+# Batch scratch/state inside tracked output/ (products and index stay in git)
+output/.ingest2md-batch.sqlite3*
+output/source.txt
+
 # Editors / OS
 .vscode/
 .idea/

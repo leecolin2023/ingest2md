@@ -19,6 +19,7 @@ from ingest2md.runtime import RuntimeContext
 from ingest2md.router import (
     UnsupportedURLError, explain_route, find_extractor, format_route_explanation, normalize_reference,
 )
+from ingest2md.urlutils import existing_local_path
 
 logger = logging.getLogger("ingest2md")
 
@@ -69,7 +70,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ingest2md",
         description="把网页链接、App 分享文案或本地音视频转换成适合人和 LLM 阅读的本地 Markdown",
-        epilog='提示：输入请用引号完整包裹，例如 ingest2md "https://www.zhihu.com/question/xxx"',
+        epilog=(
+            '提示：输入请用引号完整包裹，例如 ingest2md "https://www.zhihu.com/question/xxx"。'
+            "链接/App 分享文案（非本地文件）默认走批量入口：先写入 <输出目录>/source.txt 再按批处理；"
+            "本地音视频/文档文件保持单条处理。"
+        ),
     )
     parser.add_argument("source", help="URL、App 分享文案、本地音视频路径或 B站 BV 号")
     _add_runtime_arguments(parser)
@@ -133,6 +138,58 @@ def _configure_logging(verbose: bool) -> None:
     )
 
 
+BATCH_MANIFEST_SUFFIXES = frozenset({".txt", ".jsonl", ".csv"})
+
+
+def _manifest_file_of(source: str) -> Path | None:
+    """输入本身是本地批量清单文件时返回该文件，否则返回 None。"""
+    local = existing_local_path(source)
+    if local and Path(local).suffix.lower() in BATCH_MANIFEST_SUFFIXES:
+        return Path(local)
+    return None
+
+
+def _should_route_to_batch(source: str) -> bool:
+    """链接 / App 分享文案（非本地文件）与清单文件默认走批量入口。"""
+    local = existing_local_path(source)
+    if not local:
+        return True
+    return Path(local).suffix.lower() in BATCH_MANIFEST_SUFFIXES
+
+
+def _batch_main_from_source(args: argparse.Namespace) -> int:
+    """按批量入口处理默认命令的输入。
+
+    非本地文件输入会先清空并重写 <输出目录>/source.txt，再以该文件为清单执行；
+    本地清单文件（.txt/.jsonl/.csv）则直接执行。
+    """
+    manifest = _manifest_file_of(args.source)
+    if manifest is not None:
+        logger.info("输入是批量清单文件，直接走批量入口: %s", manifest)
+    else:
+        try:
+            settings = load_settings(args.config, output_dir=args.output)
+            output_dir = Path(settings.output_dir).expanduser().resolve()
+            output_dir.mkdir(parents=True, exist_ok=True)
+            manifest = output_dir / "source.txt"
+            # 每次执行前清空重写：write_text 截断旧内容后写入本次输入
+            manifest.write_text(f"{str(args.source).strip()}\n", encoding="utf-8")
+        except Exception as exc:
+            logger.error("批量入口初始化失败: %s", exc)
+            if args.verbose:
+                raise
+            return EXIT_FETCH_FAILED
+        logger.info("输入不是本地文件，已写入批量清单: %s", manifest)
+
+    batch_args = argparse.Namespace(**vars(args))
+    batch_args.manifest = str(manifest)
+    batch_args.resume = False
+    batch_args.take = 0
+    batch_args.retry_failed = False
+    batch_args.state_db = None
+    return _execute_batch(batch_args)
+
+
 def single_main(argv: list[str]) -> int:
     args = build_parser().parse_args(argv)
     _configure_logging(args.verbose)
@@ -144,6 +201,9 @@ def single_main(argv: list[str]) -> int:
         except UnsupportedURLError as exc:
             print(exc, file=sys.stderr)
             return EXIT_UNSUPPORTED
+
+    if not args.check_access and _should_route_to_batch(args.source):
+        return _batch_main_from_source(args)
 
     try:
         settings = _settings_from_args(args)
@@ -221,9 +281,7 @@ async def _run_batch(args) -> int:
     return EXIT_OK if summary.failed == 0 else EXIT_FETCH_FAILED
 
 
-def batch_main(argv: list[str]) -> int:
-    args = build_batch_parser().parse_args(argv)
-    _configure_logging(args.verbose)
+def _execute_batch(args: argparse.Namespace) -> int:
     try:
         return asyncio.run(_run_batch(args))
     except (ValueError, FileNotFoundError) as exc:
@@ -234,6 +292,12 @@ def batch_main(argv: list[str]) -> int:
         if args.verbose:
             raise
         return EXIT_FETCH_FAILED
+
+
+def batch_main(argv: list[str]) -> int:
+    args = build_batch_parser().parse_args(argv)
+    _configure_logging(args.verbose)
+    return _execute_batch(args)
 
 
 def main(argv: list[str] | None = None) -> int:
