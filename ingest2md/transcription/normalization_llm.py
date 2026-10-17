@@ -157,12 +157,6 @@ def _validate_and_apply_edits(
         if old == source:
             reject(number, segment_id, "不允许把整段文本作为替换范围")
             continue
-        if len(new) >= len(source):
-            reject(number, segment_id, "new 长度不小于整段原文，疑似整段改写")
-            continue
-        if len(new) > max(24, len(old) * 4):
-            reject(number, segment_id, "new 过长，疑似非局部替换")
-            continue
         occurrences = source.count(old)
         if occurrences != 1:
             reject(
@@ -170,6 +164,12 @@ def _validate_and_apply_edits(
                 segment_id,
                 f"old 在原文中出现 {occurrences} 次，无法唯一定位",
             )
+            continue
+        if len(new) >= len(source):
+            reject(number, segment_id, "new 长度不小于整段原文，疑似整段改写")
+            continue
+        if len(new) > max(24, len(old) * 4):
+            reject(number, segment_id, "new 过长，疑似非局部替换")
             continue
 
         start = source.find(old)
