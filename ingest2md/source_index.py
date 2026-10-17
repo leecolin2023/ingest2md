@@ -1,13 +1,14 @@
-"""Maintain ``<output_dir>/sources.md``: 链接 -> Extractor -> 产物路径 索引。
-
-每次成功写出产物后追加或刷新一行表格，让生成结果可以回溯到来源链接。
-索引失败绝不能影响转写本身，调用方需要自行捕获异常。
-"""
+"""Maintain ``<output_dir>/sources.md`` without losing concurrent updates."""
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+
+from filelock import FileLock
 
 SOURCE_INDEX_FILENAME = "sources.md"
 SOURCE_INDEX_TITLE = "# 转写链接记录"
@@ -37,7 +38,28 @@ def _is_separator_row(line: str) -> bool:
 
 
 def _normalized_link(value: str) -> str:
-    return value.strip().strip("`").rstrip("/").lower()
+    """Only scheme and host are case-insensitive; paths and queries are not."""
+    raw = value.strip().strip("`")
+    try:
+        parts = urlsplit(raw)
+        if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
+            return raw.rstrip("/")
+        authority = parts.netloc
+        prefix, at, hostport = authority.rpartition("@")
+        if not at:
+            hostport = authority
+        if hostport.startswith("["):
+            closing = hostport.find("]")
+            hostport = hostport[:closing + 1].lower() + hostport[closing + 1:]
+        else:
+            host, separator, port = hostport.partition(":")
+            hostport = host.lower() + (separator + port if separator else "")
+        netloc = (prefix + "@" if at else "") + hostport
+        return urlunsplit((
+            parts.scheme.lower(), netloc, parts.path.rstrip("/"), parts.query, parts.fragment,
+        ))
+    except ValueError:
+        return raw.rstrip("/")
 
 
 def _product_display(product: Path, output_dir: Path) -> str:
@@ -47,9 +69,9 @@ def _product_display(product: Path, output_dir: Path) -> str:
         return product.as_posix()
 
 
-def _product_name(cell_or_display: str) -> str:
-    value = cell_or_display.strip().strip("`").strip()
-    return Path(value.replace("\\|", "|")).name
+def _product_key(cell_or_display: str) -> str:
+    """Compare the full relative product path, not just a shared basename."""
+    return cell_or_display.strip().strip("`").replace("\\|", "|").strip()
 
 
 def _render_row(link: str, extractor: str, product_display: str, date: str) -> str:
@@ -60,7 +82,71 @@ def _render_row(link: str, extractor: str, product_display: str, date: str) -> s
 
 
 def _write(index_path: Path, lines: list[str]) -> None:
-    index_path.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+    """Publish a complete file atomically, preserving the prior index on failure."""
+    contents = "\n".join(lines).rstrip("\n") + "\n"
+    fd, temporary_name = tempfile.mkstemp(
+        dir=index_path.parent, prefix=f".{index_path.name}.", suffix=".tmp",
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(contents)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, index_path)
+    finally:
+        Path(temporary_name).unlink(missing_ok=True)
+
+
+def _record_source_locked(
+    index_path: Path, link: str, extractor: str, display: str, date_text: str,
+) -> None:
+    new_row = _render_row(link, extractor, display, date_text)
+    if not index_path.is_file():
+        _write(index_path, [SOURCE_INDEX_TITLE, "", SOURCE_INDEX_HEADER, SOURCE_INDEX_SEPARATOR, new_row])
+        return
+
+    lines = index_path.read_text(encoding="utf-8").splitlines()
+    # Do not append index data into an unrelated file also named sources.md.
+    if not lines or lines[0].strip() != SOURCE_INDEX_TITLE:
+        raise ValueError(f"Refusing to overwrite non-index document: {index_path}")
+    header_at = next(
+        (
+            i for i, line in enumerate(lines)
+            if line.strip().startswith("|") and _split_row(line) == list(SOURCE_INDEX_COLUMNS)
+        ),
+        None,
+    )
+    if header_at is None:
+        lines.extend(["", SOURCE_INDEX_HEADER, SOURCE_INDEX_SEPARATOR, new_row])
+        _write(index_path, lines)
+        return
+
+    separator_at = header_at + 1
+    if separator_at >= len(lines) or not _is_separator_row(lines[separator_at]):
+        lines.insert(separator_at, SOURCE_INDEX_SEPARATOR)
+    first_data_at = header_at + 2
+
+    new_link = _normalized_link(link)
+    new_product = _product_key(display)
+    matched = []
+    cursor = first_data_at
+    while cursor < len(lines) and lines[cursor].strip().startswith("|"):
+        if not _is_separator_row(lines[cursor]):
+            cells = _split_row(lines[cursor])
+            if len(cells) >= len(SOURCE_INDEX_COLUMNS):
+                same_link = bool(new_link) and _normalized_link(cells[0]) == new_link
+                same_product = bool(new_product) and _product_key(cells[2]) == new_product
+                if same_link or same_product:
+                    matched.append(cursor)
+        cursor += 1
+
+    if matched:
+        lines[matched[0]] = new_row
+        for index in reversed(matched[1:]):
+            del lines[index]
+    else:
+        lines.insert(cursor, new_row)
+    _write(index_path, lines)
 
 
 def record_source(
@@ -70,62 +156,17 @@ def record_source(
     product: Path,
     date: str | None = None,
 ) -> Path:
-    """Append or refresh the product row for ``link`` in ``sources.md``.
+    """Append or refresh the index under a stable cross-process file lock.
 
-    Deduplication matches either the same link or the same product file name,
-    so re-running one reference updates its row instead of duplicating it.
-    Hand-written sections below the table are preserved untouched.
+    The lock covers the full read/modify/write cycle, and os.replace makes
+    published versions atomic. The caller handles indexing errors separately
+    from a successful transcript output.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     index_path = output_dir / SOURCE_INDEX_FILENAME
-    date_text = date or datetime.now().strftime("%Y-%m-%d")
     display = _product_display(Path(product), output_dir)
-    new_row = _render_row(link, extractor, display, date_text)
-
-    if not index_path.is_file():
-        _write(index_path, [SOURCE_INDEX_TITLE, "", SOURCE_INDEX_HEADER, SOURCE_INDEX_SEPARATOR, new_row])
-        return index_path
-
-    lines = index_path.read_text(encoding="utf-8").splitlines()
-    header_at = next(
-        (
-            i
-            for i, line in enumerate(lines)
-            if line.strip().startswith("|") and _split_row(line) == list(SOURCE_INDEX_COLUMNS)
-        ),
-        None,
-    )
-    if header_at is None:
-        lines.extend(["", SOURCE_INDEX_HEADER, SOURCE_INDEX_SEPARATOR, new_row])
-        _write(index_path, lines)
-        return index_path
-
-    separator_at = header_at + 1
-    if separator_at >= len(lines) or not _is_separator_row(lines[separator_at]):
-        lines.insert(separator_at, SOURCE_INDEX_SEPARATOR)
-    first_data_at = header_at + 2
-
-    new_link = _normalized_link(link)
-    new_name = _product_name(display)
-    matched_at = None
-    cursor = first_data_at
-    while cursor < len(lines) and lines[cursor].strip().startswith("|"):
-        if _is_separator_row(lines[cursor]):
-            cursor += 1
-            continue
-        cells = _split_row(lines[cursor])
-        if len(cells) >= len(SOURCE_INDEX_COLUMNS):
-            same_link = bool(new_link) and _normalized_link(cells[0]) == new_link
-            same_product = bool(new_name) and _product_name(cells[2]) == new_name
-            if same_link or same_product:
-                matched_at = cursor
-                break
-        cursor += 1
-
-    if matched_at is not None:
-        lines[matched_at] = new_row
-    else:
-        lines.insert(cursor, new_row)
-    _write(index_path, lines)
+    date_text = date or datetime.now().strftime("%Y-%m-%d")
+    with FileLock(str(index_path) + ".lock", timeout=30):
+        _record_source_locked(index_path, link, extractor, display, date_text)
     return index_path

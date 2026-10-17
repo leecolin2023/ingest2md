@@ -25,6 +25,8 @@ config.yaml
 cookies.txt
 
 # ingest2md outputs and temporary media
+output/sources.md.lock
+output/.sources.md.*.tmp
 outputs/
 archive/
 work/
