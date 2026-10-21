@@ -67,10 +67,21 @@ class BilibiliExtractor:
         with tempfile.TemporaryDirectory(prefix="ingest2md-bili-") as temp:
             work = Path(temp)
             try:
-                track = fetch_yt_dlp_subtitles(meta["url"], work / "subtitles", cookies_file)
+                track = fetch_yt_dlp_subtitles(
+                    meta["url"],
+                    work / "subtitles",
+                    cookies_file,
+                    ydl_options={"http_headers": source.HEADERS},
+                )
             except Exception as exc:
-                logger.info("字幕探测失败，继续 ASR fallback: %s", exc)
-                track = None
+                # A failed probe is not evidence that subtitles do not exist.
+                # Avoid silently downloading hours of audio for ASR on HTTP
+                # errors, expired cookies, or broken subtitle formats.
+                logger.warning("Bilibili 字幕探测或获取失败，跳过 ASR fallback: %s", exc)
+                raise RuntimeError(
+                    "Bilibili 字幕探测失败，无法确认是否存在字幕；"
+                    "未下载音频或启动 ASR。请检查网络/Cookie 后重试。"
+                ) from exc
 
             audio_path = ""
             if track is not None:
