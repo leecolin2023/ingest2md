@@ -17,6 +17,8 @@
 | https://www.douyin.com/video/7687944720114322742 | DouyinExtractor | `拿到50W+ Agent 开发 offer，一面上篇复盘 北京大厂 Agent 开发岗，一面上篇！围绕 Agent 业务 + Java 工程化深挖，全程硬核拷问__7687944720114322742.md` | 2026-10-16 |
 | https://www.douyin.com/video/7689869201732816162 | DouyinExtractor | `万联易达 Agent 一面｜项目深挖，全是落地踩坑问题 北京万联易达集团 Agent 岗位一面复盘。面试官深挖流式输出滑动窗口检测、卡片组件、ReAct 执行链__7689869201732816162.md` | 2026-10-16 |
 | https://www.douyin.com/video/7696811818690777770 | DouyinExtractor | `孕35周 听了姐妹们的建议准爸爸重新整理了待产包 一定要让他收拾噢 这样就能记住所有东西 住院时好找到#待产包 #准爸爸 #孕晚期 #卸货倒计时__7696811818690777770.md` | 2026-10-17 |
+| https://www.douyin.com/video/7698986937880743211 | DouyinExtractor | `Vibe知识大赏 _ 大模型推理引擎vLLM 是什么？ 为什么同一张 GPU 能多扛几倍请求？大模型推理引擎vLLM是什么？@抖音科技 #vllm#deepse__7698986937880743211.md` | 2026-10-22 |
+| https://www.bilibili.com/video/BV1fcHD6cEw3?p=1 | BilibiliExtractor | `对话孙宇晨：年轻人如何抓住AI时代的机会？__BV1fcHD6cEw3_p1.md` | 2026-10-22 |
 
 ## 产物命名规则（实测确认，v0.10.2）
 
