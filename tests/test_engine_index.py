@@ -31,7 +31,7 @@ def test_ingestion_engine_creates_and_deduplicates_index(tmp_path: Path, monkeyp
     assert "Hello" in result.output_path.read_text(encoding="utf-8")
     index = tmp_path / "sources.md"
     assert index.is_file()
-    assert f"| {url} | FakeExtractor | `Demo__123.md` |" in index.read_text(encoding="utf-8")
+    assert f"| {url} | FakeExtractor | `{result.output_path.name}` |" in index.read_text(encoding="utf-8")
 
     asyncio.run(client.ingest_one(url))
     assert index.read_text(encoding="utf-8").count(f"| {url} |") == 1
