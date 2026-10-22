@@ -21,16 +21,19 @@
 | https://www.bilibili.com/video/BV1fcHD6cEw3?p=1 | BilibiliExtractor | `对话孙宇晨：年轻人如何抓住AI时代的机会？__BV1fcHD6cEw3_p1.md` | 2026-10-22 |
 | https://www.douyin.com/video/7698590043899792666 | DouyinExtractor | `我们的Agent项目体系其实是被友商吊打的，他们可以做到100_不撞简历，我们做不到！#ai #ai应用开发 #大模型开发 #懂王ai__7698590043899792666.md` | 2026-10-22 |
 | https://www.xiaoyuzhoufm.com/episode/6a8ed6e7ef65145dfcc5d249 | XiaoyuzhouExtractor | `一个人、两周、数百美元，如何训出登顶 Hugging Face 的模型 _ 对谈研究员逯雨鑫__6a8ed6e7ef65145dfcc5d249.md` | 2026-10-22 |
-| https://www.douyin.com/video/7698244997434313993 | DouyinExtractor | `什么是大模型的推理引擎 同一个模型，换一个引擎，为什么能处理更多请求？从预填充和解码讲起，用动画解释批处理、KV Cache、PagedAttention、前缀__7698244997434313993.md` | 2026-10-22 |
-| https://www.douyin.com/video/7698384971689397538 | DouyinExtractor | `AI 的_思考程度_拧到最高，到底多干了什么 #大模型 #思考模式__7698384971689397538.md` | 2026-10-22 |
-| https://www.douyin.com/video/7682940525107776777 | DouyinExtractor | `大语言模型本地部署，token无限免费 想在自己的电脑或服务器上运行大语言模型，到底该选哪种方案？ _本期系统介绍 LLM 本地化部署的几种主流方式： _✅ O__7682940525107776777.md` | 2026-10-22 |
+| https://www.douyin.com/video/7698244997434313993 | DouyinExtractor | `20261022__什么是大模型的推理引擎 同一个模型，换一个引擎，为什么能处理更多请求？从预填充和解码讲起，用.md` | 2026-10-22 |
+| https://www.douyin.com/video/7698384971689397538 | DouyinExtractor | `20261022__AI 的_思考程度_拧到最高，到底多干了什么 #大模型 #思考模式.md` | 2026-10-22 |
+| https://www.douyin.com/video/7682940525107776777 | DouyinExtractor | `20261022__大语言模型本地部署，token无限免费 想在自己的电脑或服务器上运行大语言模型，到底该选哪种方案？.md` | 2026-10-22 |
+| https://www.douyin.com/video/7699307266654113051 | DouyinExtractor | `20261022__Agent的高并发？ #高并发 #Agent开发 #程序员 #大模型 #面试.md` | 2026-10-22 |
 
 ## 产物命名规则（实测确认，v0.10.2）
 
-- 命名：`<标题>__<来源ID>`，标题净化非法字符、最长 80 字符；无来源 ID 时只有标题。
+- 命名：`YYYYMMDD__<标题>.md`，日期为北京时间采集日；不含时分秒和来源 ID。
+- **单个 Markdown 文件名最多 150 个 UTF-8 字节（含 `.md`）**；超长标题按剩余字节安全截断，正文保留完整标题。
 - **默认（formats: ["md"]）且无本地图片/附件时是单个 .md 文件**；
-- 存在本地图片、附件或额外格式（txt / srt / json）时才会建同名文件夹，里面放 `<标题>.md` 和 `transcript.txt` / `document.json` / `transcript.srt`。
-- 抖音实测命名：`<视频描述（截断至 80 字符）>__<aweme_id>.md`。
+- 存在本地图片、附件或额外格式（txt / srt / json）时才会建同名文件夹，里面放 `content.md` 和 `transcript.txt` / `document.json` / `transcript.srt`。
+- 抖音实测命名：`20261022__<视频描述（按 150 字节截断）>.md`。
+- 完整标题相同：重新采集成功后覆盖旧产物（包括此前其他日期的版本），`sources.md` 指向最新路径；旧版本（无日期前缀）不自动迁移或删除。
 - 表格中的"产物路径"相对于本文件所在的 `output/` 目录。
 
 ## 备注
