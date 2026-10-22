@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from ingest2md.model import Document, sanitize_filename
+from ingest2md.model import Document
 from ingest2md.urlutils import host_of, normalize_url
 
 logger = logging.getLogger(__name__)
@@ -80,12 +80,6 @@ class WeChatExtractor:
         code_blocks = process_content(content_soup)
         image_urls = collect_image_urls(content_soup)
 
-        doc_dir = output_dir / sanitize_filename(meta["title"])
-        image_map = await download_all_images(image_urls, doc_dir / "images")
-
-        body = convert_to_markdown(str(content_soup), code_blocks)
-        body = replace_image_urls(body, image_map)
-
         metadata: list[tuple[str, str]] = []
         if meta["author"]:
             metadata.append(("公众号", meta["author"]))
@@ -97,14 +91,21 @@ class WeChatExtractor:
         if ts:
             publish_dt = datetime.fromtimestamp(ts, tz=UTC_PLUS_8)
 
-        return Document(
+        # Create Document before downloading media so that images and the
+        # final Markdown use the same captured date and output directory.
+        doc = Document(
             title=meta["title"],
             source_url=url,
             metadata=metadata,
-            body_md=body,
-            image_map=image_map,
             publish_time=publish_dt,
         )
+        image_map = await download_all_images(
+            image_urls, output_dir / doc.dirname / "images"
+        )
+        body = convert_to_markdown(str(content_soup), code_blocks)
+        doc.image_map = image_map
+        doc.body_md = replace_image_urls(body, image_map)
+        return doc
 
 
 def normalize_wechat_url(raw: str) -> str:
