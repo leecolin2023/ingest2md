@@ -568,6 +568,34 @@ def test_youtube_metadata_from_subtitle_info_reuses_existing_info():
 
 
 
+def test_bilibili_short_link_reads_redirect_without_fetching_video_page(monkeypatch):
+    import ingest2md.media.bilibili as source
+
+    calls = []
+
+    class FakeResponse:
+        status_code = 302
+        url = "https://b23.tv/Vs1I48k"
+        headers = {
+            "Location": (
+                "https://www.bilibili.com/video/BV1xx411c7mD"
+                "?buvid=abc&p=2&share_source=COPY"
+            )
+        }
+
+        def raise_for_status(self):
+            return None
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return FakeResponse()
+
+    monkeypatch.setattr(source.requests, "get", fake_get)
+
+    assert source.resolve_video("https://b23.tv/Vs1I48k") == ("BV1xx411c7mD", 2)
+    assert calls[0][1]["allow_redirects"] is False
+
+
 def test_bilibili_meta_falls_back_to_ytdlp_when_view_api_unavailable(monkeypatch):
     import ingest2md.media.bilibili as source
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 
@@ -28,9 +28,14 @@ def resolve_video(value: str) -> tuple[str, int]:
         return value, 1
     parsed = urlparse(value)
     if parsed.hostname == "b23.tv":
-        response = requests.get(value, headers=HEADERS, allow_redirects=True, timeout=30)
+        # Read the redirect target without fetching the video page. Following
+        # the redirect makes Bilibili risk control return 412 for requests
+        # that do not carry a full browser cookie set.
+        response = requests.get(
+            value, headers=HEADERS, allow_redirects=False, timeout=30
+        )
         response.raise_for_status()
-        value = response.url
+        value = urljoin(value, response.headers.get("Location") or response.url)
         parsed = urlparse(value)
     match = BV_RE.search(parsed.path)
     if not match:
