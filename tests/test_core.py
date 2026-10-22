@@ -285,13 +285,14 @@ def test_default_write_is_markdown_only(tmp_path: Path):
     doc = Document(title="demo", source_url="https://example.com", body_md="body")
     path = write_document(doc, tmp_path, ("md",))
     assert path.exists()
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["demo.md"]
+    assert sorted(p.name for p in tmp_path.iterdir()) == [f"{doc.dirname}.md"]
 
 
 def test_explicit_json_groups_output(tmp_path: Path):
     doc = Document(title="demo", source_url="https://example.com", body_md="body")
     path = write_document(doc, tmp_path, ("md", "json"))
-    assert path.parent.name == "demo"
+    assert path.parent.name == doc.dirname
+    assert path.name == "content.md"
     assert (path.parent / "document.json").exists()
 
 
