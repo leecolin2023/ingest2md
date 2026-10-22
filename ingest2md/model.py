@@ -141,12 +141,18 @@ def write_document(doc: Document, output_dir: Path, formats=("md",)) -> Path:
     return md_path
 
 
+@dataclass(frozen=True)
+class PublishedArtifact:
+    path: Path
+    replaced: tuple[Path, ...] = ()
+
+
 def publish_document(
     doc: Document,
     staged_md: Path,
     staging_dir: Path,
     output_dir: Path,
-) -> Path:
+) -> PublishedArtifact:
     """Atomically publish staged output, replacing previous dates for an exact title.
 
     An adapter must finish all attachments inside the staging directory before
@@ -210,4 +216,8 @@ def publish_document(
                 except OSError:
                     pass
 
-    return target_entry / "content.md" if target_entry.is_dir() else target_entry
+    path = target_entry / "content.md" if target_entry.is_dir() else target_entry
+    previous_products = tuple(
+        p / "content.md" if p.is_dir() else p for p in previous_entries
+    )
+    return PublishedArtifact(path=path, replaced=previous_products)
