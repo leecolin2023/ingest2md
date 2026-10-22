@@ -76,9 +76,10 @@ class IngestionEngine:
             staging_dir = Path(temporary)
             document = await extractor.extract(reference, staging_dir)
             staged_md = write_document(document, staging_dir, self.settings.formats)
-            output_path = publish_document(
+            published = publish_document(
                 document, staged_md, staging_dir, self.output_dir
             )
+            output_path = published.path
 
         source_link = (
             document.source_url
@@ -89,6 +90,7 @@ class IngestionEngine:
             record_source(
                 self.output_dir, source_link, type(extractor).__name__, output_path,
                 date=document.capture_day.isoformat(),
+                obsolete_products=published.replaced,
             )
         except Exception as exc:
             # 索引写入失败不能影响已经完成的转写。
