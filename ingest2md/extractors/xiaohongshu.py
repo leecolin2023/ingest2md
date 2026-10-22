@@ -16,7 +16,7 @@ from ingest2md.browser import browser_context, load_netscape_cookies
 from ingest2md.config import Settings, load_settings
 from ingest2md.htmlutils import clean_fragment, meta_content
 from ingest2md.netutils import DEFAULT_USER_AGENT
-from ingest2md.model import Document, sanitize_filename
+from ingest2md.model import Document
 from ingest2md.urlutils import host_of
 
 logger = logging.getLogger(__name__)
