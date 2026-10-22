@@ -33,6 +33,7 @@ class IngestionResult:
     output_path: Path
     canonical_key: str
     document: Document
+    replaced_output_paths: tuple[Path, ...] = ()
 
 
 class IngestionEngine:
@@ -111,4 +112,5 @@ class IngestionEngine:
             output_path=output_path,
             canonical_key=canonical_key,
             document=document,
+            replaced_output_paths=published.replaced,
         )
