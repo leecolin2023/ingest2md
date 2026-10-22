@@ -67,11 +67,16 @@ class Document:
     original_description: str = ""
 
     @property
-    def dirname(self) -> str:
-        """Date + title only; source ID and time-of-day are intentionally omitted."""
+    def capture_day(self):
+        """Capture date in the naming timezone, independent of host timezone."""
         if self.captured_at.tzinfo is None or self.captured_at.utcoffset() is None:
             raise ValueError("captured_at 必须带时区")
-        prefix = self.captured_at.astimezone(_CHINA_TZ).strftime("%Y%m%d") + "__"
+        return self.captured_at.astimezone(_CHINA_TZ).date()
+
+    @property
+    def dirname(self) -> str:
+        """Date + title only; source ID and time-of-day are intentionally omitted."""
+        prefix = self.capture_day.strftime("%Y%m%d") + "__"
         budget = MAX_OUTPUT_FILENAME_BYTES - len(prefix.encode("utf-8")) - len(".md")
         return prefix + _safe_output_title(self.title, budget)
 
