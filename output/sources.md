@@ -23,6 +23,7 @@
 | https://www.xiaoyuzhoufm.com/episode/6a8ed6e7ef65145dfcc5d249 | XiaoyuzhouExtractor | `一个人、两周、数百美元，如何训出登顶 Hugging Face 的模型 _ 对谈研究员逯雨鑫__6a8ed6e7ef65145dfcc5d249.md` | 2026-10-22 |
 | https://www.douyin.com/video/7698244997434313993 | DouyinExtractor | `什么是大模型的推理引擎 同一个模型，换一个引擎，为什么能处理更多请求？从预填充和解码讲起，用动画解释批处理、KV Cache、PagedAttention、前缀__7698244997434313993.md` | 2026-10-22 |
 | https://www.douyin.com/video/7698384971689397538 | DouyinExtractor | `AI 的_思考程度_拧到最高，到底多干了什么 #大模型 #思考模式__7698384971689397538.md` | 2026-10-22 |
+| https://www.douyin.com/video/7682940525107776777 | DouyinExtractor | `大语言模型本地部署，token无限免费 想在自己的电脑或服务器上运行大语言模型，到底该选哪种方案？ _本期系统介绍 LLM 本地化部署的几种主流方式： _✅ O__7682940525107776777.md` | 2026-10-22 |
 
 ## 产物命名规则（实测确认，v0.10.2）
 
