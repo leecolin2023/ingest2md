@@ -32,6 +32,10 @@ class SubtitleFetchResult:
     info: dict
 
 
+class SubtitleAcquisitionError(RuntimeError):
+    """A subtitle track was advertised but could not be obtained or parsed."""
+
+
 _PREFERRED_LANGUAGES = (
     "zh-Hans", "zh-CN", "zh", "zh-TW", "zh-Hant",
     "en", "en-US", "en-GB",
@@ -121,6 +125,20 @@ def parse_vtt_or_srt(text: str) -> list[SubtitleCue]:
     return cues
 
 
+def _inline_subtitle_cues(formats: list[dict]) -> list[SubtitleCue]:
+    """Reuse subtitle text already embedded in yt-dlp metadata (notably Bilibili SRT)."""
+    for item in reversed(formats):
+        if not isinstance(item, dict):
+            continue
+        extension = str(item.get("ext") or "").lower()
+        data = item.get("data")
+        if isinstance(data, str) and extension in {"srt", "vtt"}:
+            cues = parse_vtt_or_srt(data)
+            if cues:
+                return cues
+    return []
+
+
 def fetch_yt_dlp_subtitles_with_info(
     url: str,
     work_dir: Path,
@@ -139,7 +157,14 @@ def fetch_yt_dlp_subtitles_with_info(
         raise ImportError("字幕探测需要 yt-dlp，请重新安装 ingest2md") from exc
 
     common = _common_options(cookies_file, ydl_options)
-    probe_options = {**common, "skip_download": True}
+    # Bilibili only fetches its subtitle list when yt-dlp's subtitle
+    # extraction is enabled. download=False still avoids media downloads.
+    probe_options = {
+        **common,
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+    }
     with yt_dlp.YoutubeDL(probe_options) as ydl:
         info = ydl.extract_info(url, download=False) or {}
 
@@ -158,6 +183,15 @@ def fetch_yt_dlp_subtitles_with_info(
     language = _pick_language(tracks)
     if not language:
         return SubtitleFetchResult(track=None, info=info)
+
+    # Some extractors (Bilibili) provide an already-fetched SRT under "data".
+    # Consuming it avoids a second extract_info call and duplicated API traffic.
+    inline_cues = _inline_subtitle_cues(tracks.get(language) or [])
+    if inline_cues:
+        return SubtitleFetchResult(
+            track=SubtitleTrack(language=language, kind=kind, cues=inline_cues),
+            info=info,
+        )
 
     work_dir.mkdir(parents=True, exist_ok=True)
     outtmpl = str(work_dir / "subtitle.%(ext)s")
@@ -181,12 +215,16 @@ def fetch_yt_dlp_subtitles_with_info(
     if not candidates:
         candidates = [p for p in work_dir.iterdir() if p.suffix.lower() in {".vtt", ".srt"}]
     if not candidates:
-        return SubtitleFetchResult(track=None, info=info)
+        raise SubtitleAcquisitionError(
+            f"yt-dlp 已发现 {language} 字幕，但没有取得可解析的 SRT/VTT 文件"
+        )
 
     subtitle_path = max(candidates, key=lambda p: p.stat().st_mtime)
     cues = parse_vtt_or_srt(subtitle_path.read_text(encoding="utf-8", errors="replace"))
     if not cues:
-        return SubtitleFetchResult(track=None, info=info)
+        raise SubtitleAcquisitionError(
+            f"yt-dlp 已发现 {language} 字幕，但下载内容缺少有效时间戳文本"
+        )
     return SubtitleFetchResult(
         track=SubtitleTrack(language=language, kind=kind, cues=cues),
         info=info,
