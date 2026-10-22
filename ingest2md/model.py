@@ -58,13 +58,13 @@ class Document:
     body_md: str = ""
     image_map: dict[str, str] = field(default_factory=dict)
     publish_time: datetime | None = None
-    captured_at: datetime = field(default_factory=lambda: datetime.now(_CHINA_TZ))
     source_id: str = ""
     source_type: str = ""
     transcript: TranscriptResult | None = None
     attachments: list[str] = field(default_factory=list)
     original_title: str = ""
     original_description: str = ""
+    captured_at: datetime = field(default_factory=lambda: datetime.now(_CHINA_TZ))
 
     @property
     def capture_day(self):
