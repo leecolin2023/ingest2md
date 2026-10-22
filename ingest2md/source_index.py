@@ -99,6 +99,7 @@ def _write(index_path: Path, lines: list[str]) -> None:
 
 def _record_source_locked(
     index_path: Path, link: str, extractor: str, display: str, date_text: str,
+    obsolete_displays: frozenset[str] = frozenset(),
 ) -> None:
     new_row = _render_row(link, extractor, display, date_text)
     if not index_path.is_file():
@@ -136,7 +137,10 @@ def _record_source_locked(
             if len(cells) >= len(SOURCE_INDEX_COLUMNS):
                 same_link = bool(new_link) and _normalized_link(cells[0]) == new_link
                 same_product = bool(new_product) and _product_key(cells[2]) == new_product
-                if same_link or same_product:
+                # A title overwrite may remove a prior dated product,
+                # even when this ingestion arrived through a different URL.
+                obsolete_product = _product_key(cells[2]) in obsolete_displays
+                if same_link or same_product or obsolete_product:
                     matched.append(cursor)
         cursor += 1
 
@@ -155,6 +159,7 @@ def record_source(
     extractor: str,
     product: Path,
     date: str | None = None,
+    obsolete_products: tuple[Path, ...] = (),
 ) -> Path:
     """Append or refresh the index under a stable cross-process file lock.
 
@@ -167,6 +172,11 @@ def record_source(
     index_path = output_dir / SOURCE_INDEX_FILENAME
     display = _product_display(Path(product), output_dir)
     date_text = date or datetime.now().strftime("%Y-%m-%d")
+    obsolete_displays = frozenset(
+        _product_key(_product_display(Path(old), output_dir)) for old in obsolete_products
+    )
     with FileLock(str(index_path) + ".lock", timeout=30):
-        _record_source_locked(index_path, link, extractor, display, date_text)
+        _record_source_locked(
+            index_path, link, extractor, display, date_text, obsolete_displays,
+        )
     return index_path
