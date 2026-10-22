@@ -198,3 +198,17 @@ def test_index_date_uses_same_beijing_day_as_output(tmp_path, monkeypatch):
     result = asyncio.run(engine.ingest_one("https://example.com/time"))
     assert result.output_path.name == "20261022__跨时区.md"
     assert "2026-10-22" in (tmp_path / "sources.md").read_text(encoding="utf-8")
+
+
+
+def test_title_overwrite_from_different_url_replaces_stale_index_row(tmp_path, monkeypatch):
+    engine = _mock_engine(tmp_path, monkeypatch, ["相同内容", "相同内容"],
+                          [_time(21), _time(22)])
+    old = asyncio.run(engine.ingest_one("https://example.com/old"))
+    new = asyncio.run(engine.ingest_one("https://example.com/new"))
+    assert not old.output_path.exists()
+    assert new.output_path.is_file()
+    index = (tmp_path / "sources.md").read_text(encoding="utf-8")
+    assert "https://example.com/new" in index
+    assert "https://example.com/old" not in index
+    assert "20261021__相同内容.md" not in index
