@@ -193,6 +193,9 @@ def publish_document(
         if target_entry.exists() and target_entry not in previous_entries:
             raise FileExistsError(f"产物路径已被其他内容占用: {target_entry}")
 
+        previous_products = tuple(
+            p / "content.md" if p.is_dir() else p for p in previous_entries
+        )
         backup_dir = Path(tempfile.mkdtemp(prefix=".ingest2md-replace-", dir=output_dir))
         moved: list[Path] = []
         committed = False
@@ -217,7 +220,4 @@ def publish_document(
                     pass
 
     path = target_entry / "content.md" if target_entry.is_dir() else target_entry
-    previous_products = tuple(
-        p / "content.md" if p.is_dir() else p for p in previous_entries
-    )
     return PublishedArtifact(path=path, replaced=previous_products)
