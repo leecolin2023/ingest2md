@@ -1,14 +1,17 @@
 """Shared lightweight data model and output writer."""
 from __future__ import annotations
 
-import hashlib
 import json
+import os
 import re
+import shutil
+import tempfile
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ingest2md.source_index import SOURCE_INDEX_FILENAME
+from filelock import FileLock
+
 from ingest2md.transcription.model import TranscriptResult
 
 _UNSAFE_FILENAME_CHARS = re.compile(r'[/\\?%*:|"<>\x00-\x1f]')
@@ -22,6 +25,29 @@ def sanitize_filename(name: str, max_length: int = 80) -> str:
     return cleaned[:max_length]
 
 
+# The primary Markdown filename, including ".md", has a 150-byte UTF-8 budget.
+MAX_OUTPUT_FILENAME_BYTES = 150
+_CHINA_TZ = timezone(timedelta(hours=8))
+_DATED_STEM_RE = re.compile(r"^\\d{8}__(.+)$")
+
+
+def _safe_output_title(title: str, max_bytes: int) -> str:
+    """Shorten a sanitized title without cutting a UTF-8 character."""
+    cleaned = _UNSAFE_FILENAME_CHARS.sub("_", title)
+    cleaned = re.sub(r"\\s+", " ", cleaned).strip().strip(".")
+    if not cleaned.strip("_ "):
+        cleaned = "untitled"
+    length = 0
+    chars: list[str] = []
+    for char in cleaned:
+        size = len(char.encode("utf-8"))
+        if length + size > max_bytes:
+            break
+        chars.append(char)
+        length += size
+    return "".join(chars).rstrip(" .") or "untitled"
+
+
 @dataclass
 class Document:
     """One user-facing content object rendered primarily as Markdown."""
@@ -32,6 +58,7 @@ class Document:
     body_md: str = ""
     image_map: dict[str, str] = field(default_factory=dict)
     publish_time: datetime | None = None
+    captured_at: datetime = field(default_factory=lambda: datetime.now(_CHINA_TZ))
     source_id: str = ""
     source_type: str = ""
     transcript: TranscriptResult | None = None
@@ -41,8 +68,12 @@ class Document:
 
     @property
     def dirname(self) -> str:
-        title = sanitize_filename(self.title)
-        return f"{title}__{sanitize_filename(self.source_id)}" if self.source_id else title
+        """Date + title only; source ID and time-of-day are intentionally omitted."""
+        if self.captured_at.tzinfo is None or self.captured_at.utcoffset() is None:
+            raise ValueError("captured_at 必须带时区")
+        prefix = self.captured_at.astimezone(_CHINA_TZ).strftime("%Y%m%d") + "__"
+        budget = MAX_OUTPUT_FILENAME_BYTES - len(prefix.encode("utf-8")) - len(".md")
+        return prefix + _safe_output_title(self.title, budget)
 
     def build_markdown(self) -> str:
         header = [f"# {self.title}"]
@@ -59,6 +90,7 @@ def _record_for_json(doc: Document) -> dict:
         "source_id": doc.source_id,
         "source_type": doc.source_type,
         "title": doc.title,
+        "captured_at": doc.captured_at.isoformat(),
         "metadata": doc.metadata,
         "body_md": doc.body_md,
         "attachments": doc.attachments,
@@ -84,14 +116,10 @@ def write_document(doc: Document, output_dir: Path, formats=("md",)) -> Path:
     if grouped:
         doc_dir = output_dir / doc.dirname
         doc_dir.mkdir(parents=True, exist_ok=True)
-        md_path = doc_dir / f"{doc.dirname}.md"
+        md_path = doc_dir / "content.md"
     else:
         doc_dir = output_dir
         md_path = output_dir / f"{doc.dirname}.md"
-        if md_path.name.casefold() == SOURCE_INDEX_FILENAME.casefold():
-            # sources.md is exclusively reserved for the generated source index.
-            digest = hashlib.sha256(doc.source_url.encode("utf-8")).hexdigest()[:12]
-            md_path = output_dir / f"{doc.dirname}__{digest}.md"
     md_path.write_text(doc.build_markdown(), encoding="utf-8")
 
     if "txt" in formats:
@@ -106,3 +134,75 @@ def write_document(doc: Document, output_dir: Path, formats=("md",)) -> Path:
         from ingest2md.transcription.writers import render_srt
         (doc_dir / "transcript.srt").write_text(render_srt(doc.transcript), encoding="utf-8")
     return md_path
+
+
+def publish_document(
+    doc: Document,
+    staged_md: Path,
+    staging_dir: Path,
+    output_dir: Path,
+) -> Path:
+    """Atomically publish staged output, replacing previous dates for an exact title.
+
+    An adapter must finish all attachments inside the staging directory before
+    publication. Under the cross-process lock, the old output is moved aside
+    and restored if the final move fails.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    staged_entry = staged_md if staged_md.parent == staging_dir else staged_md.parent
+    target_entry = output_dir / staged_entry.name
+
+    with FileLock(str(output_dir / ".ingest2md-output.lock"), timeout=30):
+        previous_entries: list[Path] = []
+        title_suffix = doc.dirname[10:]
+        for candidate in output_dir.iterdir():
+            if candidate.is_file() and candidate.suffix == ".md":
+                candidate_stem, candidate_md = candidate.stem, candidate
+            elif candidate.is_dir():
+                candidate_stem, candidate_md = candidate.name, candidate / "content.md"
+            else:
+                continue
+            match = _DATED_STEM_RE.fullmatch(candidate_stem)
+            if not match or match.group(1) != title_suffix:
+                continue
+            if candidate_md.is_file():
+                with candidate_md.open(encoding="utf-8") as stream:
+                    saved_heading = stream.readline().rstrip("\r\n")
+                if saved_heading == f"# {doc.title}":
+                    previous_entries.append(candidate)
+                    continue
+            # Different full titles can truncate to the same 150-byte stem.
+            # They must never overwrite each other.
+            if candidate == target_entry:
+                raise FileExistsError(
+                    f"标题截断后产物重名，拒绝覆盖: {candidate.name}；"
+                    "请修改标题或使用另一输出目录"
+                )
+
+        if target_entry.exists() and target_entry not in previous_entries:
+            raise FileExistsError(f"产物路径已被其他内容占用: {target_entry}")
+
+        backup_dir = Path(tempfile.mkdtemp(prefix=".ingest2md-replace-", dir=output_dir))
+        moved: list[Path] = []
+        committed = False
+        try:
+            for old_entry in previous_entries:
+                os.replace(old_entry, backup_dir / old_entry.name)
+                moved.append(old_entry)
+            os.replace(staged_entry, target_entry)
+            committed = True
+        finally:
+            if not committed:
+                for old_entry in reversed(moved):
+                    os.replace(backup_dir / old_entry.name, old_entry)
+            if committed:
+                # Failed removal of obsolete backups must not mark the newly
+                # published document as failed.
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            else:
+                try:
+                    backup_dir.rmdir()
+                except OSError:
+                    pass
+
+    return target_entry / "content.md" if target_entry.is_dir() else target_entry
