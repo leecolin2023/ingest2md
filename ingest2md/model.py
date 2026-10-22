@@ -28,13 +28,13 @@ def sanitize_filename(name: str, max_length: int = 80) -> str:
 # The primary Markdown filename, including ".md", has a 150-byte UTF-8 budget.
 MAX_OUTPUT_FILENAME_BYTES = 150
 _CHINA_TZ = timezone(timedelta(hours=8))
-_DATED_STEM_RE = re.compile(r"^\\d{8}__(.+)$")
+_DATED_STEM_RE = re.compile(r"^\d{8}__(.+)$")
 
 
 def _safe_output_title(title: str, max_bytes: int) -> str:
     """Shorten a sanitized title without cutting a UTF-8 character."""
     cleaned = _UNSAFE_FILENAME_CHARS.sub("_", title)
-    cleaned = re.sub(r"\\s+", " ", cleaned).strip().strip(".")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().strip(".")
     if not cleaned.strip("_ "):
         cleaned = "untitled"
     length = 0
