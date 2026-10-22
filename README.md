@@ -187,6 +187,19 @@ ingest2md batch sources.jsonl -o output/batch --resume --retry-failed
 - `--take N` 可限制本次处理数量；
 - 同一批次复用一个 `RuntimeContext`，避免重复初始化昂贵资源。
 
+### 产物命名与重复采集
+
+新产物的命名为 `YYYYMMDD__标题.md`（采集日固定使用北京时间，不含时分秒和来源 ID）。
+**单个 Markdown 文件名最多 150 个 UTF-8 字节（包括 `.md`）**；超长标题按照剩余字节安全截断，正文始终保留完整标题。
+
+- 仅 Markdown：`output/20261022__文章标题.md`。
+- 带图片、附件或选择 JSON/TXT/SRT 等附加格式：`output/20261022__文章标题/content.md`，同目录下保留 `images/`、`audio.*`、`document.json` 等。
+- 完整标题相同：重新采集成功后覆盖旧产物，包括此前其他日期的版本；`sources.md` 指向最新路径。旧产物在新内容采集成功前不会被删除。
+- 不同完整标题因截断落到同一个目标文件名：明确报错，不覆盖其他内容。
+- 旧版本（无日期前缀）的产物不自动迁移或删除；Batch `--resume` 仍基于 SQLite 记录的实际产物路径判断是否需要重跑。
+
+文件名只负责展示与人工管理；内部 `source_type/source_id` 和批量任务标识仍独立保留。
+
 ## 7. 字幕与 ASR
 
 媒体类来源的默认原则是：**字幕优先，本地 ASR fallback，云端显式 opt-in。**
@@ -319,7 +332,9 @@ TranscriptResult (optional)
     ↓
 Document
     ↓
-write_document()
+write_document() to per-run staging directory
+    ↓
+publish_document() (title-based replacement under file lock)
 ```
 
 批量模式额外包含：
