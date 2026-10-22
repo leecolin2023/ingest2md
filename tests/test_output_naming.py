@@ -212,3 +212,30 @@ def test_title_overwrite_from_different_url_replaces_stale_index_row(tmp_path, m
     assert "https://example.com/new" in index
     assert "https://example.com/old" not in index
     assert "20261021__相同内容.md" not in index
+
+
+
+def test_batch_resume_paths_are_repaired_after_title_replacement(tmp_path, monkeypatch):
+    from ingest2md.batch.models import BatchItem, config_fingerprint
+    from ingest2md.batch.store import TaskStore
+
+    engine = _mock_engine(tmp_path, monkeypatch, ["批量同名", "批量同名"],
+                          [_time(21), _time(22)])
+    first_url, second_url = "https://example.com/first", "https://example.com/second"
+    store = TaskStore(tmp_path / "batch.sqlite3")
+    try:
+        ids = store.register([BatchItem(first_url), BatchItem(second_url)],
+                             config_fingerprint(engine.settings))
+        first = asyncio.run(engine.ingest_one(first_url))
+        store.mark_success(ids[0], first)
+        second = asyncio.run(engine.ingest_one(second_url))
+        store.mark_success(ids[1], second)
+
+        store.refresh_missing_outputs(ids)
+        assert store.summary(ids).success == 2
+        rows = store.db.execute(
+            "SELECT output_path FROM tasks WHERE id IN (?, ?) ORDER BY id", ids
+        ).fetchall()
+        assert [row["output_path"] for row in rows] == [str(second.output_path)] * 2
+    finally:
+        store.close()
