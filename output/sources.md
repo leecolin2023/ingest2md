@@ -19,6 +19,8 @@
 | https://www.douyin.com/video/7696811818690777770 | DouyinExtractor | `孕35周 听了姐妹们的建议准爸爸重新整理了待产包 一定要让他收拾噢 这样就能记住所有东西 住院时好找到#待产包 #准爸爸 #孕晚期 #卸货倒计时__7696811818690777770.md` | 2026-10-17 |
 | https://www.douyin.com/video/7698986937880743211 | DouyinExtractor | `Vibe知识大赏 _ 大模型推理引擎vLLM 是什么？ 为什么同一张 GPU 能多扛几倍请求？大模型推理引擎vLLM是什么？@抖音科技 #vllm#deepse__7698986937880743211.md` | 2026-10-22 |
 | https://www.bilibili.com/video/BV1fcHD6cEw3?p=1 | BilibiliExtractor | `对话孙宇晨：年轻人如何抓住AI时代的机会？__BV1fcHD6cEw3_p1.md` | 2026-10-22 |
+| https://www.douyin.com/video/7698590043899792666 | DouyinExtractor | `我们的Agent项目体系其实是被友商吊打的，他们可以做到100_不撞简历，我们做不到！#ai #ai应用开发 #大模型开发 #懂王ai__7698590043899792666.md` | 2026-10-22 |
+| https://www.xiaoyuzhoufm.com/episode/6a8ed6e7ef65145dfcc5d249 | XiaoyuzhouExtractor | `一个人、两周、数百美元，如何训出登顶 Hugging Face 的模型 _ 对谈研究员逯雨鑫__6a8ed6e7ef65145dfcc5d249.md` | 2026-10-22 |
 
 ## 产物命名规则（实测确认，v0.10.2）
 
