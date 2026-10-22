@@ -67,7 +67,7 @@ def test_reserved_sources_title_does_not_overwrite_index(tmp_path: Path, monkeyp
     )
     client = IngestionEngine(Settings(output_dir=str(tmp_path)))
     result = asyncio.run(client.ingest_one("https://example.com/reserved"))
-    assert result.output_path.name.startswith("sources__")
+    assert result.output_path.name.endswith("__sources.md")
     assert result.output_path.name != "sources.md"
     assert "real content" in result.output_path.read_text(encoding="utf-8")
     index_text = (tmp_path / "sources.md").read_text(encoding="utf-8")
