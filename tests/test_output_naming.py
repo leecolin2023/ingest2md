@@ -179,7 +179,7 @@ def test_publish_move_failure_restores_old_artifact(tmp_path, monkeypatch):
     original_replace = model.os.replace
 
     def fail_publish(src, dst):
-        if ".ingest2md-stage-" in str(src) and Path(dst).name.startswith("20261022__"):
+        if ".i2m-" in str(src) and Path(dst).name.startswith("20261022__"):
             raise OSError("simulated publication failure")
         return original_replace(src, dst)
 
