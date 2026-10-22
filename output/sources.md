@@ -21,6 +21,8 @@
 | https://www.bilibili.com/video/BV1fcHD6cEw3?p=1 | BilibiliExtractor | `对话孙宇晨：年轻人如何抓住AI时代的机会？__BV1fcHD6cEw3_p1.md` | 2026-10-22 |
 | https://www.douyin.com/video/7698590043899792666 | DouyinExtractor | `我们的Agent项目体系其实是被友商吊打的，他们可以做到100_不撞简历，我们做不到！#ai #ai应用开发 #大模型开发 #懂王ai__7698590043899792666.md` | 2026-10-22 |
 | https://www.xiaoyuzhoufm.com/episode/6a8ed6e7ef65145dfcc5d249 | XiaoyuzhouExtractor | `一个人、两周、数百美元，如何训出登顶 Hugging Face 的模型 _ 对谈研究员逯雨鑫__6a8ed6e7ef65145dfcc5d249.md` | 2026-10-22 |
+| https://www.douyin.com/video/7698244997434313993 | DouyinExtractor | `什么是大模型的推理引擎 同一个模型，换一个引擎，为什么能处理更多请求？从预填充和解码讲起，用动画解释批处理、KV Cache、PagedAttention、前缀__7698244997434313993.md` | 2026-10-22 |
+| https://www.douyin.com/video/7698384971689397538 | DouyinExtractor | `AI 的_思考程度_拧到最高，到底多干了什么 #大模型 #思考模式__7698384971689397538.md` | 2026-10-22 |
 
 ## 产物命名规则（实测确认，v0.10.2）
 
