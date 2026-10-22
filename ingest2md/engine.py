@@ -88,7 +88,7 @@ class IngestionEngine:
         try:
             record_source(
                 self.output_dir, source_link, type(extractor).__name__, output_path,
-                date=document.captured_at.strftime("%Y-%m-%d"),
+                date=document.capture_day.isoformat(),
             )
         except Exception as exc:
             # 索引写入失败不能影响已经完成的转写。
