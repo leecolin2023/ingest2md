@@ -167,3 +167,34 @@ def test_cross_day_unrelated_truncated_titles_are_not_deleted(tmp_path, monkeypa
     assert first.output_path.is_file()
     assert second.output_path.is_file()
     assert len(_primary_outputs(tmp_path)) == 2
+
+
+
+def test_publish_move_failure_restores_old_artifact(tmp_path, monkeypatch):
+    import ingest2md.model as model
+
+    engine = _mock_engine(tmp_path, monkeypatch, ["可靠覆盖", "可靠覆盖"],
+                          [_time(21), _time(22)], grouped=True)
+    old = asyncio.run(engine.ingest_one("https://example.com/same"))
+    original_replace = model.os.replace
+
+    def fail_publish(src, dst):
+        if ".ingest2md-stage-" in str(src) and Path(dst).name.startswith("20261022__"):
+            raise OSError("simulated publication failure")
+        return original_replace(src, dst)
+
+    monkeypatch.setattr(model.os, "replace", fail_publish)
+    with pytest.raises(OSError, match="publication failure"):
+        asyncio.run(engine.ingest_one("https://example.com/same"))
+
+    assert old.output_path.is_file()
+    assert "version-0" in old.output_path.read_text(encoding="utf-8")
+    assert len(_primary_outputs(tmp_path)) == 1
+
+
+def test_index_date_uses_same_beijing_day_as_output(tmp_path, monkeypatch):
+    utc_evening = datetime(2026, 10, 21, 20, tzinfo=timezone.utc)
+    engine = _mock_engine(tmp_path, monkeypatch, ["跨时区"], [utc_evening])
+    result = asyncio.run(engine.ingest_one("https://example.com/time"))
+    assert result.output_path.name == "20261022__跨时区.md"
+    assert "2026-10-22" in (tmp_path / "sources.md").read_text(encoding="utf-8")
