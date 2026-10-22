@@ -72,7 +72,7 @@ class IngestionEngine:
         # a failed re-ingestion cannot destroy the previous successful version.
         self.output_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
-            prefix=".ingest2md-stage-", dir=self.output_dir
+            prefix=".i2m-", dir=self.output_dir
         ) as temporary:
             staging_dir = Path(temporary)
             document = await extractor.extract(reference, staging_dir)
