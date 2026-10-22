@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from ingest2md.config import Settings
-from ingest2md.model import Document, write_document
+from ingest2md.model import Document, publish_document, write_document
 from ingest2md.router import find_extractor, normalize_reference
 from ingest2md.runtime import RuntimeContext
 from ingest2md.source_index import record_source
@@ -32,6 +33,7 @@ class IngestionResult:
     output_path: Path
     canonical_key: str
     document: Document
+    replaced_output_paths: tuple[Path, ...] = ()
 
 
 class IngestionEngine:
@@ -65,8 +67,20 @@ class IngestionEngine:
             if self.runtime is not None
             else find_extractor(reference, settings=self.settings)
         )
-        document = await extractor.extract(reference, self.output_dir)
-        output_path = write_document(document, self.output_dir, self.settings.formats)
+        # Extractors may save pictures/audio before returning Document. All
+        # artifacts must share one staging root and be published together, so
+        # a failed re-ingestion cannot destroy the previous successful version.
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=".i2m-", dir=self.output_dir
+        ) as temporary:
+            staging_dir = Path(temporary)
+            document = await extractor.extract(reference, staging_dir)
+            staged_md = write_document(document, staging_dir, self.settings.formats)
+            published = publish_document(
+                document, staged_md, staging_dir, self.output_dir
+            )
+            output_path = published.path
 
         source_link = (
             document.source_url
@@ -74,7 +88,11 @@ class IngestionEngine:
             else reference
         )
         try:
-            record_source(self.output_dir, source_link, type(extractor).__name__, output_path)
+            record_source(
+                self.output_dir, source_link, type(extractor).__name__, output_path,
+                date=document.capture_day.isoformat(),
+                obsolete_products=published.replaced,
+            )
         except Exception as exc:
             # 索引写入失败不能影响已经完成的转写。
             logger.warning("sources.md 更新失败（不影响本次转写）: %s", exc)
@@ -94,4 +112,5 @@ class IngestionEngine:
             output_path=output_path,
             canonical_key=canonical_key,
             document=document,
+            replaced_output_paths=published.replaced,
         )

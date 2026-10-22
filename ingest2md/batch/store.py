@@ -162,6 +162,20 @@ class TaskStore:
                 str(result.output_path), task_id,
             ),
         )
+        # Title-based replacement can move a successful task's artifact to
+        # a new dated path. Repair older references so --resume does not
+        # continually re-ingest a superseded copy of the same titled output.
+        replacements = [
+            (str(result.output_path), str(old))
+            for old in result.replaced_output_paths
+            if old != result.output_path
+        ]
+        if replacements:
+            self.db.executemany(
+                """UPDATE tasks SET output_path=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE status='success' AND output_path=?""",
+                replacements,
+            )
         self.db.commit()
 
     def mark_failed(self, task_id: int, code: str, message: str) -> None:
