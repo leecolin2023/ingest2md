@@ -194,7 +194,7 @@ ingest2md batch sources.jsonl -o output/batch --resume --retry-failed
 
 - 仅 Markdown：`output/20261022__文章标题.md`。
 - 带图片、附件或选择 JSON/TXT/SRT 等附加格式：`output/20261022__文章标题/content.md`，同目录下保留 `images/`、`audio.*`、`document.json` 等。
-- 完整标题相同：重新采集成功后覆盖旧产物，包括此前其他日期的版本；`sources.md` 指向最新路径。旧产物在新内容采集成功前不会被删除。
+- 完整标题相同：重新采集成功后覆盖旧产物，包括此前其他日期的版本；`sources.md` 指向最新路径。旧产物在新内容采集成功前不会被删除；Batch 中已成功任务对旧路径的引用同步更新，避免 `--resume` 重复采集。
 - 不同完整标题因截断落到同一个目标文件名：明确报错，不覆盖其他内容。
 - 旧版本（无日期前缀）的产物不自动迁移或删除；Batch `--resume` 仍基于 SQLite 记录的实际产物路径判断是否需要重跑。
 
