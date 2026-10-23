@@ -25,6 +25,12 @@
 | https://www.douyin.com/video/7698384971689397538 | DouyinExtractor | `20261022__AI 的_思考程度_拧到最高，到底多干了什么 #大模型 #思考模式.md` | 2026-10-22 |
 | https://www.douyin.com/video/7682940525107776777 | DouyinExtractor | `20261022__大语言模型本地部署，token无限免费 想在自己的电脑或服务器上运行大语言模型，到底该选哪种方案？.md` | 2026-10-22 |
 | https://www.douyin.com/video/7699307266654113051 | DouyinExtractor | `20261022__Agent的高并发？ #高并发 #Agent开发 #程序员 #大模型 #面试.md` | 2026-10-22 |
+| https://www.xiaoyuzhoufm.com/episode/6a86b0e7ef65145dfcc28862 | XiaoyuzhouExtractor | `20261023__21.如何从0开始做小生意_ 和百万创业者聊聊，职场里不教的经营思维.md` | 2026-10-23 |
+| https://www.xiaoyuzhoufm.com/episode/69ada2afc8cdeb38c2872f37 | XiaoyuzhouExtractor | `20261023__E146. 为什么越重要的事，越容易选错？研究“选择”的经济学家 叶晓阳.md` | 2026-10-23 |
+| https://www.douyin.com/video/7699803386157321508 | DouyinExtractor | `20261023__评测集对Agent面试非常重要！没有之一。 #ai #ai应用开发 #大模型开发 #懂王ai.md` | 2026-10-23 |
+| https://www.douyin.com/video/7699081241752096043 | DouyinExtractor | `20261023__只要面试官敢问本体论，那就不好意思了。 #ai #ai应用开发 #大模型开发 #懂王ai.md` | 2026-10-23 |
+| https://www.douyin.com/video/7698698699202956559 | DouyinExtractor | `20261023__微调和Rag的区别，面试必问！必须学！ #ai #ai应用开发 #大模型开发 #懂王ai.md` | 2026-10-23 |
+| https://www.douyin.com/video/7675690881772506414 | DouyinExtractor | `20261023__为什么 Agent 时代需要一个新的 API ？ DeepSeek V4 Pro 正式版支持 Responses API 了，它和 Chat Completions API 到底.md` | 2026-10-23 |
 
 ## 产物命名规则（实测确认，v0.10.2）
 
