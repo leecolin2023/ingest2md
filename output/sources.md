@@ -31,6 +31,13 @@
 | https://www.douyin.com/video/7699081241752096043 | DouyinExtractor | `20261023__只要面试官敢问本体论，那就不好意思了。 #ai #ai应用开发 #大模型开发 #懂王ai.md` | 2026-10-23 |
 | https://www.douyin.com/video/7698698699202956559 | DouyinExtractor | `20261023__微调和Rag的区别，面试必问！必须学！ #ai #ai应用开发 #大模型开发 #懂王ai.md` | 2026-10-23 |
 | https://www.douyin.com/video/7675690881772506414 | DouyinExtractor | `20261023__为什么 Agent 时代需要一个新的 API ？ DeepSeek V4 Pro 正式版支持 Responses API 了，它和 Chat Completions API 到底.md` | 2026-10-23 |
+| https://www.douyin.com/video/7696095922236771635 | DouyinExtractor | `20261024__面试官问你Rag如何保证100_准确，千万注意这就是陷阱！ #ai #ai应用开发 #大模型开发 #懂王ai.md` | 2026-10-24 |
+| https://www.douyin.com/video/7699878728507149594 | DouyinExtractor | `20261025__【快问快答】字节 RAG 面经夺命十连问 #AI大模型 #大模型面试 #RAG #Agent #程序员.md` | 2026-10-25 |
+| https://www.douyin.com/video/7654441174879515307 | DouyinExtractor | `20261025__为什么搜索、RAG、Agent 至今离不开 BM25？三个直觉一次讲透 #BM25 #RAG #向量检索 #AIAgent #大模型.md` | 2026-10-25 |
+| https://www.douyin.com/video/7671666197519174927 | DouyinExtractor | `20261025__混合检索中，BM25 和向量检索到底怎么配合？ #rag #aiagent#openai #人工智能 #知识库.md` | 2026-10-25 |
+| https://www.douyin.com/video/7676809659613740901 | DouyinExtractor | `20261025__搞不懂BM25，你的RAG检索可能白做了！ #我在抖音学ai #rag知识库 #ai #混合检索 #向量检索.md` | 2026-10-25 |
+| https://www.douyin.com/video/7665258549009747215 | DouyinExtractor | `20261025__面试必考题BM25+向量检索为啥要混合检索？召回条数怎么配？ #大模型面试 #RAG #人工智能 #大模型 #ai.md` | 2026-10-25 |
+| https://www.douyin.com/video/7696438526128278819 | DouyinExtractor | `20261025__RAG检索阶段，BM25和向量检索为什么互补？#rag #ai大模型 #人工智能 #计算机.md` | 2026-10-25 |
 
 ## 产物命名规则（实测确认，v0.10.2）
 
