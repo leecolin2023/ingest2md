@@ -1,15 +1,15 @@
 # output 最新增量内容处理清单（2026-10-26）
 
-本清单对应本轮核验的 ingest2md 两个连续提交：
+本清单记录两次素材提交的处理进度，按 2026-10-26 最新用户要求：所有原先未处理稿件均生成 Deep Read + Learning，不再以视频是否超过十分钟决定处理方法。原始时长分类仅供追踪：
 
 - [ec142013](https://github.com/leecolin2023/ingest2md/commit/ec142013f68295a04ddcd62fe0912205e941d21a)：新增 77 份本地视频转写，每份输出含 `content.md` 和 `transcript.txt`。
 - [fb7579d6](https://github.com/leecolin2023/ingest2md/commit/fb7579d6c5bff0df1dc898291d7a6662a7d25379)：新增 7 份 RAG/BM25 抖音转写。
 
-**筛选依据：** 视频元数据中的 `时长（秒）`；抖音原稿以 `已处理（秒）` 作为可获得的视频转写时长代理。阈值严格为 **600 秒**：超过 600 秒的生成两份独立交付稿（Deep Read + Learning），600 秒及以下的生成忠实整理稿（Transcript Refinement）。不能按字数判断时长。
+**原始时长：**保持历史统计的 600 秒分类以便溯源；当轮新指令已覆盖原有时长分流逻辑：原有未处理稿件一律生成双稿。
 
 **目录：** `output-Learning/`（长视频两份 Markdown）；`output-Refinement/`（短视频一份 Markdown），沿用仓库大小写约定。原始 `output/` 保留不改。
 
-**进度：** 总数 **84 篇**；长视频 **37 篇**，已处理 3 篇（6 份 Markdown）；短视频 **47 篇**，已处理 7 篇。尚待处理 **74 篇**。状态“已提交”表示对应文字文件已推送 GitHub，不表示原视频已被人工核听，也不表示 Learning 所需的独立 Review 模型调用隔离通过验证。
+**进度（本轮中间检查）：**总数 **84 篇**；此前 7 篇已 Refine、3 篇已有双稿；本轮新增 **42 篇双稿（84 份 Markdown）**。目前共有 **45 篇双稿**、**7 篇仅 Refine**，尚待本次双稿处理 **32 篇**。已提交指文件写入 GitHub，不代表人工核听或完整独立 D/R→L 执行验收。
 
 > Learning V0.7.0 要求 Deep Read、Review 以同一原稿分别独立运行并有执行记录；本轮已生成的 Learning 内容含该限制声明。后续若要求严格遵守完整运行时隔离，必须另有具备隔离调用和留痕能力的宿主。
 
@@ -21,7 +21,7 @@
 | `output/20261025__02 直播梳理LLM原理01/content.md` | 26:33 | 1593.73 | 待处理 |
 | `output/20261025__03 直播-LLM原理02/content.md` | 39:51 | 2391.60 | 待处理 |
 | `output/20261025__04 客户系统的Rag到底怎么建？_ev/content.md` | 10:37 | 637.42 | Deep Read + Learning 已提交（Review 调用隔离未验证） |
-| `output/20261025__04 直播-LLM原理-03/content.md` | 11:48 | 708.80 | 待处理 |
+| `output/20261025__04 直播-LLM原理-03/content.md` | 11:48 | 708.80 | Deep Read + Learning 已提交（Review 隔离未验证） |
 | `output/20261025__05 重学langchain01/content.md` | 36:11 | 2171.80 | 待处理 |
 | `output/20261025__06 用postgre + pgvector实现稠密稀疏向量_ev/content.md` | 10:34 | 634.77 | Deep Read + Learning 已提交（Review 调用隔离未验证） |
 | `output/20261025__06 重学langchain02/content.md` | 39:27 | 2367.80 | 待处理 |
@@ -36,7 +36,7 @@
 | `output/20261025__3.9 创业无限画布深圳30k(重点看)-裁切/content.md` | 51:09 | 3069.82 | 待处理 |
 | `output/20261025__3.9 字节外包-裁切/content.md` | 44:42 | 2682.92 | 待处理 |
 | `output/20261025__3.9 重庆50k-裁切/content.md` | 32:47 | 1967.94 | 待处理 |
-| `output/20261025__32 自媒体运营Agent 5_ev/content.md` | 12:03 | 723.66 | 待处理 |
+| `output/20261025__32 自媒体运营Agent 5_ev/content.md` | 12:03 | 723.66 | Deep Read + Learning 已提交（Review 隔离未验证） |
 | `output/20261025__4.22 上海35K实战面试-1面裁切/content.md` | 56:42 | 3402.33 | 待处理 |
 | `output/20261025__4.23 上海35K实战面试-2面裁切/content.md` | 51:53 | 3113.62 | 待处理 |
 | `output/20261025__7.17 30k杭州阿里技术支持/content.md` | 14:01 | 841.93 | 待处理 |
@@ -59,46 +59,46 @@
 
 | 输入路径 | 时长 m:ss | 时长秒 | 处理状态 |
 | --- | ---: | ---: | --- |
-| `output/20261025__01 面试最重要的就是吹_ev/content.md` | 7:05 | 425.37 | 待处理 |
-| `output/20261025__03 如何向面试官介绍我们的8个项目_ev/content.md` | 9:35 | 575.11 | 待处理 |
-| `output/20261025__05 用户的查询流程解析_ev/content.md` | 3:39 | 219.53 | 待处理 |
-| `output/20261025__07 Topk N Rerank_ev/content.md` | 8:37 | 517.48 | 待处理 |
-| `output/20261025__08 为啥项目一定要Rerank_ev/content.md` | 4:02 | 242.10 | 待处理 |
-| `output/20261025__09 需不需要降维和量化_ev/content.md` | 6:58 | 418.86 | 待处理 |
-| `output/20261025__10 知识库的数据频繁变动怎么办？_ev/content.md` | 3:25 | 205.98 | 待处理 |
-| `output/20261025__11 客服遇到高并发怎么办？_ev/content.md` | 8:44 | 524.22 | 待处理 |
-| `output/20261025__12 如何提升召回率？_ev/content.md` | 2:32 | 152.36 | 待处理 |
-| `output/20261025__13 如何统计召回率和准确率_ev/content.md` | 8:01 | 481.83 | 待处理 |
-| `output/20261025__14 客服系统如何返回多模态的数据？_ev/content.md` | 1:45 | 105.17 | 待处理 |
-| `output/20261025__15 LLM性能优化 01_ev/content.md` | 8:12 | 492.19 | 待处理 |
-| `output/20261025__16 LLM性能优化 02_ev/content.md` | 8:10 | 490.33 | 待处理 |
-| `output/20261025__17 RTC语音链路优化_ev/content.md` | 7:08 | 428.33 | 待处理 |
-| `output/20261025__18 评测集1_ev/content.md` | 2:43 | 163.33 | 待处理 |
-| `output/20261025__19 评测集2_ev/content.md` | 8:36 | 516.52 | 待处理 |
-| `output/20261025__20 评测集3_ev/content.md` | 8:51 | 531.92 | 待处理 |
-| `output/20261025__21 评测集4_ev/content.md` | 8:48 | 528.91 | 待处理 |
-| `output/20261025__22 数据中台1_ev/content.md` | 5:34 | 334.51 | 待处理 |
-| `output/20261025__23 数据中台2_ev/content.md` | 3:53 | 233.67 | 待处理 |
-| `output/20261025__24 数据中台3_ev/content.md` | 6:20 | 380.65 | 待处理 |
-| `output/20261025__25 数据中台4_ev/content.md` | 3:52 | 232.07 | 待处理 |
-| `output/20261025__27 直播切片项目2_ev/content.md` | 5:20 | 320.42 | 待处理 |
-| `output/20261025__28 自媒体运营Agengt1_ev/content.md` | 8:42 | 522.05 | 待处理 |
-| `output/20261025__29 自媒体运营Agengt2_ev/content.md` | 6:13 | 373.53 | 待处理 |
-| `output/20261025__30 自媒体运营Agent 3_ev/content.md` | 7:15 | 435.55 | 待处理 |
-| `output/20261025__31 自媒体运营Agent 4_ev/content.md` | 4:58 | 298.56 | 待处理 |
-| `output/20261025__33 MCP集群1_ev/content.md` | 5:08 | 308.28 | 待处理 |
-| `output/20261025__34 MCP集群2_ev/content.md` | 2:14 | 134.35 | 待处理 |
-| `output/20261025__35 Mcp集群3_ev/content.md` | 4:42 | 282.16 | 待处理 |
-| `output/20261025__36 MCP集群4_ev/content.md` | 4:31 | 271.25 | 待处理 |
-| `output/20261025__37 Ai素材管理中心_ev/content.md` | 4:54 | 294.95 | 待处理 |
-| `output/20261025__38 销售考核系统1_ev/content.md` | 3:13 | 193.48 | 待处理 |
-| `output/20261025__39 销售考核系统2_ev/content.md` | 9:45 | 585.25 | 待处理 |
-| `output/20261025__40 模型微调1_ev/content.md` | 3:06 | 186.08 | 待处理 |
-| `output/20261025__41 模型微调2_ev/content.md` | 6:33 | 393.76 | 待处理 |
-| `output/20261025__42 模型微调3_ev/content.md` | 2:39 | 159.38 | 待处理 |
-| `output/20261025__43 模型微调4_ev/content.md` | 7:11 | 431.70 | 待处理 |
-| `output/20261025__44 模型微调5_ev/content.md` | 9:58 | 598.98 | 待处理 |
-| `output/20261026__16 3.4 如何用Ai写定制化的业务简历 02/content.md` | 7:30 | 450.47 | 待处理 |
+| `output/20261025__01 面试最重要的就是吹_ev/content.md` | 7:05 | 425.37 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__03 如何向面试官介绍我们的8个项目_ev/content.md` | 9:35 | 575.11 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__05 用户的查询流程解析_ev/content.md` | 3:39 | 219.53 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__07 Topk N Rerank_ev/content.md` | 8:37 | 517.48 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__08 为啥项目一定要Rerank_ev/content.md` | 4:02 | 242.10 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__09 需不需要降维和量化_ev/content.md` | 6:58 | 418.86 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__10 知识库的数据频繁变动怎么办？_ev/content.md` | 3:25 | 205.98 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__11 客服遇到高并发怎么办？_ev/content.md` | 8:44 | 524.22 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__12 如何提升召回率？_ev/content.md` | 2:32 | 152.36 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__13 如何统计召回率和准确率_ev/content.md` | 8:01 | 481.83 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__14 客服系统如何返回多模态的数据？_ev/content.md` | 1:45 | 105.17 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__15 LLM性能优化 01_ev/content.md` | 8:12 | 492.19 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__16 LLM性能优化 02_ev/content.md` | 8:10 | 490.33 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__17 RTC语音链路优化_ev/content.md` | 7:08 | 428.33 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__18 评测集1_ev/content.md` | 2:43 | 163.33 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__19 评测集2_ev/content.md` | 8:36 | 516.52 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__20 评测集3_ev/content.md` | 8:51 | 531.92 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__21 评测集4_ev/content.md` | 8:48 | 528.91 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__22 数据中台1_ev/content.md` | 5:34 | 334.51 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__23 数据中台2_ev/content.md` | 3:53 | 233.67 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__24 数据中台3_ev/content.md` | 6:20 | 380.65 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__25 数据中台4_ev/content.md` | 3:52 | 232.07 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__27 直播切片项目2_ev/content.md` | 5:20 | 320.42 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__28 自媒体运营Agengt1_ev/content.md` | 8:42 | 522.05 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__29 自媒体运营Agengt2_ev/content.md` | 6:13 | 373.53 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__30 自媒体运营Agent 3_ev/content.md` | 7:15 | 435.55 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__31 自媒体运营Agent 4_ev/content.md` | 4:58 | 298.56 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__33 MCP集群1_ev/content.md` | 5:08 | 308.28 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__34 MCP集群2_ev/content.md` | 2:14 | 134.35 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__35 Mcp集群3_ev/content.md` | 4:42 | 282.16 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__36 MCP集群4_ev/content.md` | 4:31 | 271.25 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__37 Ai素材管理中心_ev/content.md` | 4:54 | 294.95 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__38 销售考核系统1_ev/content.md` | 3:13 | 193.48 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__39 销售考核系统2_ev/content.md` | 9:45 | 585.25 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__40 模型微调1_ev/content.md` | 3:06 | 186.08 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__41 模型微调2_ev/content.md` | 6:33 | 393.76 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__42 模型微调3_ev/content.md` | 2:39 | 159.38 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__43 模型微调4_ev/content.md` | 7:11 | 431.70 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261025__44 模型微调5_ev/content.md` | 9:58 | 598.98 | Deep Read + Learning 已提交（Review 隔离未验证） |
+| `output/20261026__16 3.4 如何用Ai写定制化的业务简历 02/content.md` | 7:30 | 450.47 | Deep Read + Learning 已提交（Review 隔离未验证） |
 | `output/20261024__面试官问你Rag如何保证100_准确，千万注意这就是陷阱！ #ai #ai应用开发 #大模型开发 #懂王ai.md` | 4:06 | 246.18 | Refine 已提交 |
 | `output/20261025__RAG检索阶段，BM25和向量检索为什么互补？#rag #ai大模型 #人工智能 #计算机.md` | 5:21 | 321.69 | Refine 已提交 |
 | `output/20261025__【快问快答】字节 RAG 面经夺命十连问 #AI大模型 #大模型面试 #RAG #Agent #程序员.md` | 6:25 | 385.47 | Refine 已提交 |
