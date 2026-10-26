@@ -16,8 +16,8 @@ def test_creates_index_with_first_row(tmp_path: Path):
     text = index.read_text(encoding="utf-8")
     assert index == tmp_path / "sources.md"
     assert text.startswith("# 转写链接记录")
-    assert "| 链接 | Extractor | 产物路径 | 日期 |" in text
-    assert "| https://example.com/a | WebExtractor | `文章A.md` | 2026-01-01 |" in text
+    assert "| 链接 | Extractor | 产物路径 | 日期 | 是否已精读 |" in text
+    assert "| https://example.com/a | WebExtractor | `文章A.md` | 2026-01-01 | 否 |" in text
 
 
 def test_updates_row_by_link_and_by_product_name(tmp_path: Path):
@@ -132,3 +132,55 @@ def test_four_real_processes_do_not_lose_updates(tmp_path: Path):
         for index in range(12):
             assert any(f"https://example.com/{group}/{index} " in row for row in rows)
     assert not list(tmp_path.glob(".sources.md.*.tmp"))
+
+
+def test_migrates_legacy_four_column_source_index(tmp_path: Path):
+    old = ("# 转写链接记录\n\n| 链接 | Extractor | 产物路径 | 日期 |\n"
+           "|---|---|---|---|\n"
+           "| https://example.com/a | WebExtractor | `A.md` | 2026-01-01 |\n")
+    (tmp_path / "sources.md").write_text(old, encoding="utf-8")
+    record_source(tmp_path, "https://example.com/b", "WebExtractor", tmp_path / "B.md")
+    lines = (tmp_path / "sources.md").read_text(encoding="utf-8")
+    assert "| 是否已精读 |" in lines
+    assert "A.md` | 2026-01-01 | 否 |" in lines
+
+
+def test_skill_status_sync_on_mixed_sources(tmp_path: Path):
+    from ingest2md.processing_status import sync_processing_status
+    output = tmp_path / "output"
+    refined = tmp_path / "output-Refinement"
+    learning = tmp_path / "output-Learning"
+    for d in (output, refined, learning):
+        d.mkdir()
+    local = output / "20261026__A"
+    local.mkdir()
+    (local / "content.md").write_text("# A\n", encoding="utf-8")
+    direct = output / "20261026__B.md"
+    direct.write_text("# B\n", encoding="utf-8")
+    result = sync_processing_status(output)
+    assert result == dict(total=2, learning=0, refinement=0, partial=0, unread=2)
+    (learning / "20261026__A__DeepRead.md").write_text("# Deep\n", encoding="utf-8")
+    (learning / "20261026__A__Learning.md").write_text("# Learning\n", encoding="utf-8")
+    (refined / "20261026__B.md").write_text("# Refine\n", encoding="utf-8")
+    result = sync_processing_status(output)
+    assert result["unread"] == 0
+    assert result["learning"] == 1 and result["refinement"] == 1
+    lines = (output / "sources.md").read_text(encoding="utf-8")
+    assert lines.count(" | 是 |") == 2
+    assert "`20261026__A/content.md`" in lines
+    (learning / "20261026__A__Learning.md").unlink()
+    result = sync_processing_status(output)
+    assert result["unread"] == 1 and result["partial"] == 1
+
+
+def test_legacy_refinement_readme_mapping(tmp_path: Path):
+    from ingest2md.processing_status import sync_processing_status
+    out = tmp_path / "output"; out.mkdir()
+    ref = tmp_path / "output-Refinement"; ref.mkdir()
+    (out / "旧题__123.md").write_text("# Old\n", encoding="utf-8")
+    (ref / "20261016__旧题.md").write_text("# Refined\n", encoding="utf-8")
+    (ref / "README.md").write_text(
+        "| [原稿](../output/%E6%97%A7%E9%A2%98__123.md) | "
+        "[20261016__旧题.md](./20261016__%E6%97%A7%E9%A2%98.md) |\n", encoding="utf-8")
+    result = sync_processing_status(out)
+    assert result["refinement"] == 1 and result["unread"] == 0

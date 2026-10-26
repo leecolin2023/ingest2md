@@ -12,7 +12,7 @@ from filelock import FileLock
 
 SOURCE_INDEX_FILENAME = "sources.md"
 SOURCE_INDEX_TITLE = "# 转写链接记录"
-SOURCE_INDEX_COLUMNS = ("链接", "Extractor", "产物路径", "日期")
+SOURCE_INDEX_COLUMNS = ("链接", "Extractor", "产物路径", "日期", "是否已精读")
 SOURCE_INDEX_HEADER = "| " + " | ".join(SOURCE_INDEX_COLUMNS) + " |"
 SOURCE_INDEX_SEPARATOR = "|" + "---|" * len(SOURCE_INDEX_COLUMNS)
 
@@ -40,6 +40,8 @@ def _is_separator_row(line: str) -> bool:
 def _normalized_link(value: str) -> str:
     """Only scheme and host are case-insensitive; paths and queries are not."""
     raw = value.strip().strip("`")
+    if raw in {"", "—", "本地视频"}:
+        return ""
     try:
         parts = urlsplit(raw)
         if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
@@ -74,10 +76,10 @@ def _product_key(cell_or_display: str) -> str:
     return cell_or_display.strip().strip("`").replace("\\|", "|").strip()
 
 
-def _render_row(link: str, extractor: str, product_display: str, date: str) -> str:
+def _render_row(link: str, extractor: str, product_display: str, date: str, read_status: str = "否") -> str:
     return (
         f"| {_escape_cell(link)} | {_escape_cell(extractor)} "
-        f"| `{_escape_cell(product_display)}` | {_escape_cell(date)} |"
+        f"| `{_escape_cell(product_display)}` | {_escape_cell(date)} | {_escape_cell(read_status)} |"
     )
 
 
@@ -110,6 +112,23 @@ def _record_source_locked(
     # Do not append index data into an unrelated file also named sources.md.
     if not lines or lines[0].strip() != SOURCE_INDEX_TITLE:
         raise ValueError(f"Refusing to overwrite non-index document: {index_path}")
+    # Migrate historical four-column tables in place without dropping rows or notes.
+    legacy_columns = list(SOURCE_INDEX_COLUMNS[:-1])
+    legacy_header_at = next(
+        (i for i, line in enumerate(lines)
+         if line.strip().startswith("|") and _split_row(line) == legacy_columns),
+        None,
+    )
+    if legacy_header_at is not None:
+        lines[legacy_header_at] = SOURCE_INDEX_HEADER
+        separator_at = legacy_header_at + 1
+        if separator_at < len(lines) and _is_separator_row(lines[separator_at]):
+            lines[separator_at] = SOURCE_INDEX_SEPARATOR
+        cursor = legacy_header_at + 2
+        while cursor < len(lines) and lines[cursor].strip().startswith("|"):
+            if not _is_separator_row(lines[cursor]) and len(_split_row(lines[cursor])) == 4:
+                lines[cursor] = lines[cursor].rstrip().rstrip("|").rstrip() + " | 否 |"
+            cursor += 1
     header_at = next(
         (
             i for i, line in enumerate(lines)
@@ -145,7 +164,12 @@ def _record_source_locked(
         cursor += 1
 
     if matched:
-        lines[matched[0]] = new_row
+        # Re-indexing the *same* source must not silently erase Skill completion.
+        previous = _split_row(lines[matched[0]])
+        previous_status = previous[4] if len(previous) >= 5 else "否"
+        same_product = _product_key(previous[2]) == new_product
+        lines[matched[0]] = _render_row(link, extractor, display, date_text,
+                                             previous_status if same_product else "否")
         for index in reversed(matched[1:]):
             del lines[index]
     else:
