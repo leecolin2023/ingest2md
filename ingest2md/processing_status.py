@@ -1,19 +1,16 @@
-"""Synchronize Skill completion for every raw output and regenerate both indexes.
+"""Synchronize Skill processing status across the archive repositories.
 
-Usage: python -m ingest2md.processing_status --output-dir output
-
-Read rule: either one existing Transcript Refinement artifact, or a complete
-DeepRead + Learning pair. Presence is an artifact check, not a verified
-independent Review/DeepRead execution trace or audio quality check.
+Skill results are archived in HarnessLab/materials or knowledge-archive. This
+module uses the explicit output/processing-status.json mapping, not the
+presence of local derivative directories. The status means archived artifacts
+exist, not that independent review execution or audio checks were verified.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
-from datetime import datetime
 from pathlib import Path
-from urllib.parse import unquote
-
 from filelock import FileLock
 
 from .source_index import (
@@ -23,163 +20,139 @@ from .source_index import (
 )
 
 
-def _source_files(output_dir: Path) -> list[Path]:
-    items = [p for p in output_dir.iterdir()
-             if p.is_file() and p.suffix.lower() == ".md"
-             and p.name != SOURCE_INDEX_FILENAME]
-    items += [p / "content.md" for p in output_dir.iterdir()
-              if p.is_dir() and (p / "content.md").is_file()]
-    return sorted(items, key=lambda x: x.relative_to(output_dir).as_posix())
+def _sources(output_dir: Path) -> list[str]:
+    names = [p.name for p in output_dir.glob("*.md")
+             if p.name != SOURCE_INDEX_FILENAME]
+    names.extend(p.name + "/content.md" for p in output_dir.iterdir()
+                 if p.is_dir() and (p / "content.md").is_file())
+    return sorted(names)
 
 
-def _legacy_links(ref_dir: Path) -> dict[str, str]:
-    readme = ref_dir / "README.md"
-    if not readme.is_file():
+def _entries(output_dir: Path) -> dict[str, dict]:
+    path = output_dir / "processing-status.json"
+    if not path.is_file():
         return {}
-    links = {}
-    for line in readme.read_text(encoding="utf-8").splitlines():
-        original = re.search(r"\[原稿\]\(\.\./output/(.+?\.md)\)", line)
-        target = re.search(r"\|\s*\[[^\]]+\]\(\./(.+?\.md)\)", line)
-        if original and target:
-            links[unquote(original.group(1))] = unquote(target.group(1))
-    return links
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    entries = payload.get("entries", [])
+    if not isinstance(entries, list):
+        raise ValueError("Manifest entries must be a list")
+    result = {}
+    for entry in entries:
+        source = entry.get("source")
+        if not isinstance(source, str) or not source or source in result:
+            raise ValueError(f"Duplicate or invalid source: {source!r}")
+        result[source] = entry
+    return result
 
 
-def _source_metadata(path: Path, output_dir: Path) -> tuple[str, str, str]:
-    display = path.relative_to(output_dir).as_posix()
-    m = re.match(r"^(\d{4})(\d{2})(\d{2})__", path.parent.name
-                 if path.name == "content.md" else path.name)
-    date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else "—"
-    if path.name == "content.md":
-        return "—", "LocalVideo", date
-    # Header metadata is read only for the few sources missing from the index.
-    head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:20])
-    original = re.search(r"^>\s*原文链接:\s*(\S+)", head, re.MULTILINE)
-    link = original.group(1) if original else "—"
-    if link.startswith("file://"):
-        link = "—"
-    extractor = ("BilibiliExtractor" if "bilibili.com" in link
-                 else "DouyinExtractor" if "douyin.com" in link
-                 else "UnindexedSource")
-    return link, extractor, date
+def _method(entry: dict) -> str:
+    if entry.get("method") == "Refinement" and entry.get("refinement"):
+        return "Refinement"
+    if (entry.get("method") == "DeepRead + Learning"
+            and entry.get("deep_read") and entry.get("learning")):
+        return "DeepRead + Learning"
+    return "未处理"
 
 
 def build_inventory(output_dir: Path) -> list[dict[str, str]]:
-    output_dir = Path(output_dir)
-    parent = output_dir.parent
-    ref_dir, learn_dir = parent / "output-Refinement", parent / "output-Learning"
-    refined = {p.name for p in ref_dir.glob("*.md")}
-    learning = {p.name for p in learn_dir.glob("*.md")}
-    legacy = _legacy_links(ref_dir)
+    archive = _entries(Path(output_dir))
     inventory = []
-    for src in _source_files(output_dir):
-        display = src.relative_to(output_dir).as_posix()
-        stem = src.parent.name if src.name == "content.md" else src.stem
-        mapped_ref = legacy.get(display, stem + ".md")
-        has_ref = mapped_ref in refined
-        has_d = stem + "__DeepRead.md" in learning
-        has_l = stem + "__Learning.md" in learning
-        if has_d and has_l:
-            kind = "DeepRead + Learning"
-        elif has_ref:
-            kind = "Refinement"
-        elif has_d or has_l:
-            kind = "部分产物（待补全）"
-        else:
-            kind = "未处理"
-        link, extractor, date = _source_metadata(src, output_dir)
-        inventory.append(dict(display=display, kind=kind,
-                              read="是" if kind in {"Refinement", "DeepRead + Learning"} else "否",
-                              link=link, extractor=extractor, date=date))
+    for source in _sources(Path(output_dir)):
+        entry = archive.get(source, {})
+        method = _method(entry)
+        inventory.append({
+            "source": source, "method": method,
+            "read": "是" if method != "未处理" else "否",
+            "refinement": entry.get("refinement", ""),
+            "deep_read": entry.get("deep_read", ""),
+            "learning": entry.get("learning", ""),
+        })
     return inventory
 
 
 def sync_processing_status(output_dir: Path) -> dict[str, int]:
-    """Lock, reconcile existing metadata, append missing sources, and publish."""
     output_dir = Path(output_dir)
+    if not output_dir.is_dir():
+        raise FileNotFoundError(output_dir)
     inventory = build_inventory(output_dir)
     index = output_dir / SOURCE_INDEX_FILENAME
-    index.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(index) + ".lock", timeout=30):
         lines = index.read_text(encoding="utf-8").splitlines() if index.is_file() else []
         if lines and lines[0].strip() != SOURCE_INDEX_TITLE:
-            raise ValueError(f"Refusing to overwrite unrelated file: {index}")
-        header_pos = next((i for i, line in enumerate(lines)
-                           if line.strip().startswith("|")
-                           and _split_row(line) in (
-                               list(("链接", "Extractor", "产物路径", "日期")),
-                               list(("链接", "Extractor", "产物路径", "日期", "是否已精读")),
-                           )), -1)
-        existing = {}
-        preface = lines[:header_pos] if header_pos >= 0 else [
-            SOURCE_INDEX_TITLE, "", "本文件由 ingest2md 自动维护；精读状态以已提交的 Skill 产物为准。",
-            ""
+            raise ValueError(f"Unrelated index: {index}")
+        expected_headers = [
+            ["链接", "Extractor", "产物路径", "日期"],
+            ["链接", "Extractor", "产物路径", "日期", "是否已精读"],
         ]
+        header = next((i for i, line in enumerate(lines)
+                       if _split_row(line) in expected_headers), -1)
+        existing = {}
         suffix = []
-        if header_pos >= 0:
-            cursor = header_pos + 2
-            while cursor < len(lines) and lines[cursor].strip().startswith("|"):
-                if not _is_separator_row(lines[cursor]):
-                    row = _split_row(lines[cursor])
-                    if len(row) >= 4:
-                        existing[_product_key(row[2])] = row
-                cursor += 1
-            suffix = lines[cursor:]
+        if header >= 0:
+            pos = header + 2
+            while pos < len(lines) and lines[pos].strip().startswith("|"):
+                if not _is_separator_row(lines[pos]):
+                    fields = _split_row(lines[pos])
+                    if len(fields) >= 4:
+                        existing[_product_key(fields[2])] = fields
+                pos += 1
+            suffix = lines[pos:]
         rows = []
         for item in inventory:
-            old = existing.get(item["display"])
+            source = item["source"]
+            old = existing.get(source)
+            date_match = re.match(r"^(\d{4})(\d{2})(\d{2})__", source)
+            date = ("-".join(date_match.groups()) if date_match else "—")
+            link, extractor = (("本地视频", "LocalMediaExtractor")
+                               if source.endswith("/content.md")
+                               else ("—", "UnindexedSource"))
             if old:
                 link, extractor, date = old[0], old[1], old[3]
-            else:
-                link, extractor, date = item["link"], item["extractor"], item["date"]
-            rows.append(_render_row(link, extractor, item["display"],
-                                    date, item["read"]))
-        _write(index, preface + [SOURCE_INDEX_HEADER, SOURCE_INDEX_SEPARATOR]
-               + rows + suffix)
+            rows.append(_render_row(link, extractor, source, date, item["read"]))
+        prefix = [
+            SOURCE_INDEX_TITLE, "",
+            "转写索引由 ingest2md 维护；是否已精读由 processing_status 按 JSON 归档映射同步。",
+            "", SOURCE_INDEX_HEADER, SOURCE_INDEX_SEPARATOR,
+        ]
+        _write(index, prefix + rows + suffix)
 
     total = len(inventory)
-    complete_learning = sum(i["kind"] == "DeepRead + Learning" for i in inventory)
-    refined_count = sum(i["kind"] == "Refinement" for i in inventory)
-    partial = sum(i["kind"] == "部分产物（待补全）" for i in inventory)
-    unread = sum(i["read"] == "否" for i in inventory)
-    report = parent_index = output_dir.parent / "output-Learning" / "PROCESSING_INDEX.md"
-    report.parent.mkdir(parents=True, exist_ok=True)
-    report_lines = [
-        "# Ingest2MD 全量处理索引（自动对账）",
+    learning = sum(item["method"] == "DeepRead + Learning" for item in inventory)
+    refinement = sum(item["method"] == "Refinement" for item in inventory)
+    unread = sum(item["read"] == "否" for item in inventory)
+    report = output_dir.parent / "PROCESSING_INDEX.md"
+    result_lines = [
+        "# Ingest2MD 素材处理索引", "",
+        "以 output 中原稿及 output/processing-status.json 的归档映射为依据。",
         "",
-        "本表以 `output/` 中实际可读原稿为基准，通过文件名与旧版 Refinement README 的映射，",
-        "检查 `output-Refinement/` 及 `output-Learning/` 实际产物。",
+        f"原稿 **{total}** 篇；DeepRead + Learning **{learning}** 篇；"
+        f"Refinement **{refinement}** 篇；未精读 **{unread}** 篇。",
         "",
-        f"- 原稿总数：**{total}**",
-        f"- DeepRead + Learning 双稿：**{complete_learning}**",
-        f"- Refinement 单稿：**{refined_count}**",
-        f"- 不完整双稿：**{partial}**",
-        f"- 未精读：**{unread}**",
+        "已精读表示相应 Skill 产物已归档，不代表经过独立事实核验、人工核听或执行隔离验收。",
         "",
-        "> **状态规则**：存在 Refinement 单稿，或同时存在 DeepRead 与 Learning 两份文件，则“是否已精读=是”。",
-        "> “已精读”仅证明相应文件已生成，不证明音频人工核对、事实独立核验或 SenseWright D/R 运行时隔离。",
-        "> 重新运行本模块可按当前文件状态覆盖标记（若文件丢失则降回“否”）。",
+        "新产物入库后先更新 JSON，运行 python -m ingest2md.processing_status --output-dir output。",
         "",
-        "## 原稿逐篇核对",
-        "",
-        "| 原稿 | 处理方式 | 是否已精读 |",
-        "| --- | --- | --- |",
+        "| 原稿 | 加工方式 | 是否已精读 | 归档产物 |",
+        "|---|---|---|---|",
     ]
     for item in inventory:
-        report_lines.append(
-            f'| `output/{_escape_cell(item["display"])}` | '
-            f'{item["kind"]} | {item["read"]} |'
-        )
-    report.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
-    return dict(total=total, learning=complete_learning, refinement=refined_count,
-                partial=partial, unread=unread)
+        if item["method"] == "Refinement":
+            artifacts = f'[Refinement]({item["refinement"]})'
+        elif item["method"] == "DeepRead + Learning":
+            artifacts = f'[DeepRead]({item["deep_read"]}) · [Learning]({item["learning"]})'
+        else:
+            artifacts = "—"
+        result_lines.append(f'| output/{_escape_cell(item["source"])} | '
+                            f'{item["method"]} | {item["read"]} | {artifacts} |')
+    report.write_text("\n".join(result_lines) + "\n", encoding="utf-8")
+    return dict(total=total, learning=learning, refinement=refinement, unread=unread)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=Path("output"))
-    opts = parser.parse_args()
-    print(sync_processing_status(opts.output_dir))
+    args = parser.parse_args()
+    print(sync_processing_status(args.output_dir))
 
 
 if __name__ == "__main__":
