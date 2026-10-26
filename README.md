@@ -1,5 +1,10 @@
 # ingest2md
 
+## 后处理材料归档（2026-10-26）
+
+本仓库只保存采集层的原始 `output/`；此前的 `output-Refinement/` 和 `output-Learning/` 已迁移到 [HarnessLab materials](https://github.com/leecolin2023/HarnessLab/tree/main/materials) 与 [knowledge-archive](https://github.com/leecolin2023/knowledge-archive)。详见 [迁移说明](./PROCESSED_MATERIALS.md)。
+
+
 > Source-aware content ingestion for AI / agents: turn web pages, media, documents and pasted references into portable Markdown.
 
 `ingest2md` 的目标不是做一个“万能爬虫”，也不是直接做总结、RAG 或知识库。
