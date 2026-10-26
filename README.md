@@ -4,6 +4,8 @@
 
 本仓库只保存采集层的原始 `output/`；此前的 `output-Refinement/` 和 `output-Learning/` 已迁移到 [HarnessLab materials](https://github.com/leecolin2023/HarnessLab/tree/main/materials) 与 [knowledge-archive](https://github.com/leecolin2023/knowledge-archive)。详见 [迁移说明](./PROCESSED_MATERIALS.md)。
 
+查看 [全量处理索引](./PROCESSING_INDEX.md) 和 [精读状态映射](./output/processing-status.json)。`output/sources.md` 增加“是否已精读”字段。新文稿归档到知识仓库后更新状态映射，再执行 `python -m ingest2md.processing_status --output-dir output` 同步索引。
+
 
 > Source-aware content ingestion for AI / agents: turn web pages, media, documents and pasted references into portable Markdown.
 
