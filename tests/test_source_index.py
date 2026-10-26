@@ -145,42 +145,55 @@ def test_migrates_legacy_four_column_source_index(tmp_path: Path):
     assert "A.md` | 2026-01-01 | 否 |" in lines
 
 
-def test_skill_status_sync_on_mixed_sources(tmp_path: Path):
+def test_archive_manifest_drives_read_status(tmp_path: Path):
+    import json
     from ingest2md.processing_status import sync_processing_status
     output = tmp_path / "output"
-    refined = tmp_path / "output-Refinement"
-    learning = tmp_path / "output-Learning"
-    for d in (output, refined, learning):
-        d.mkdir()
-    local = output / "20261026__A"
-    local.mkdir()
-    (local / "content.md").write_text("# A\n", encoding="utf-8")
-    direct = output / "20261026__B.md"
-    direct.write_text("# B\n", encoding="utf-8")
-    result = sync_processing_status(output)
-    assert result == dict(total=2, learning=0, refinement=0, partial=0, unread=2)
-    (learning / "20261026__A__DeepRead.md").write_text("# Deep\n", encoding="utf-8")
-    (learning / "20261026__A__Learning.md").write_text("# Learning\n", encoding="utf-8")
-    (refined / "20261026__B.md").write_text("# Refine\n", encoding="utf-8")
-    result = sync_processing_status(output)
-    assert result["unread"] == 0
-    assert result["learning"] == 1 and result["refinement"] == 1
-    lines = (output / "sources.md").read_text(encoding="utf-8")
-    assert lines.count(" | 是 |") == 2
-    assert "`20261026__A/content.md`" in lines
-    (learning / "20261026__A__Learning.md").unlink()
-    result = sync_processing_status(output)
-    assert result["unread"] == 1 and result["partial"] == 1
+    output.mkdir()
+    (output / "20261026__A").mkdir()
+    (output / "20261026__A" / "content.md").write_text("# A\n", encoding="utf-8")
+    (output / "20261026__B.md").write_text("# B\n", encoding="utf-8")
+    assert sync_processing_status(output) == {
+        "total": 2, "learning": 0, "refinement": 0, "unread": 2,
+    }
+    manifest = {"schema_version": 1, "entries": [
+        {"source": "20261026__A/content.md", "method": "DeepRead + Learning",
+         "deep_read": "https://example.com/A/deep-read.md",
+         "learning": "https://example.com/A/learning.md"},
+        {"source": "20261026__B.md", "method": "Refinement",
+         "refinement": "https://example.com/B/refinement.md"},
+    ]}
+    (output / "processing-status.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    assert sync_processing_status(output) == {
+        "total": 2, "learning": 1, "refinement": 1, "unread": 0,
+    }
+    sources = (output / "sources.md").read_text(encoding="utf-8")
+    assert sources.count(" | 是 |") == 2
+    assert "20261026__A/content.md" in sources
+    assert "A/deep-read.md" in (tmp_path / "PROCESSING_INDEX.md").read_text(
+        encoding="utf-8"
+    )
+    manifest["entries"][0].pop("learning")
+    (output / "processing-status.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    assert sync_processing_status(output)["unread"] == 1
 
 
-def test_legacy_refinement_readme_mapping(tmp_path: Path):
+def test_reingest_existing_processed_product_preserves_yes(tmp_path: Path):
+    import json
     from ingest2md.processing_status import sync_processing_status
-    out = tmp_path / "output"; out.mkdir()
-    ref = tmp_path / "output-Refinement"; ref.mkdir()
-    (out / "旧题__123.md").write_text("# Old\n", encoding="utf-8")
-    (ref / "20261016__旧题.md").write_text("# Refined\n", encoding="utf-8")
-    (ref / "README.md").write_text(
-        "| [原稿](../output/%E6%97%A7%E9%A2%98__123.md) | "
-        "[20261016__旧题.md](./20261016__%E6%97%A7%E9%A2%98.md) |\n", encoding="utf-8")
-    result = sync_processing_status(out)
-    assert result["refinement"] == 1 and result["unread"] == 0
+    (tmp_path / "article.md").write_text("# Article\n", encoding="utf-8")
+    record_source(tmp_path, "https://example.com/article", "WebExtractor",
+                  tmp_path / "article.md", date="2026-01-01")
+    (tmp_path / "processing-status.json").write_text(json.dumps({
+        "entries": [{"source": "article.md", "method": "Refinement",
+                     "refinement": "https://example.com/processed.md"}],
+    }), encoding="utf-8")
+    sync_processing_status(tmp_path)
+    record_source(tmp_path, "https://example.com/article", "WebExtractor",
+                  tmp_path / "article.md", date="2026-01-02")
+    output = (tmp_path / "sources.md").read_text(encoding="utf-8")
+    assert "article.md" in output and "2026-01-02 | 是 |" in output
