@@ -38,6 +38,8 @@
 | https://www.douyin.com/video/7676809659613740901 | DouyinExtractor | `20261025__搞不懂BM25，你的RAG检索可能白做了！ #我在抖音学ai #rag知识库 #ai #混合检索 #向量检索.md` | 2026-10-25 |
 | https://www.douyin.com/video/7665258549009747215 | DouyinExtractor | `20261025__面试必考题BM25+向量检索为啥要混合检索？召回条数怎么配？ #大模型面试 #RAG #人工智能 #大模型 #ai.md` | 2026-10-25 |
 | https://www.douyin.com/video/7696438526128278819 | DouyinExtractor | `20261025__RAG检索阶段，BM25和向量检索为什么互补？#rag #ai大模型 #人工智能 #计算机.md` | 2026-10-25 |
+| https://www.bilibili.com/video/BV1JRHV6bEsa?p=1 | BilibiliExtractor | `20261026__【睡前消息1122】98_新岗位，归美国女人.md` | 2026-10-26 |
+| https://www.bilibili.com/video/BV1mXz4YfEre?p=1 | BilibiliExtractor | `20261026__李想近二十年最精彩的演讲没有之一，讲述理想汽车成功之道.md` | 2026-10-26 |
 
 ## 产物命名规则（实测确认，v0.10.2）
 
