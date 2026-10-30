@@ -1,0 +1,82 @@
+# How to deploy an AI agent to Cloud Run (step by step)
+> **频道**: Google Cloud Tech
+> **讲师**: Smitha Kolan
+> **播放列表**: Modern AI Agents: From Theory to Production
+> **集数**: 2/6
+> **时长**: 13:44
+> **语言**: English
+> **字幕来源**: YouTube 自动字幕（youtube-transcript.io 匿名获取）
+> **文本校对**: deepseek-v4.1-flash 局部校对（28 段有修订）
+> **时间戳精度**: 段落
+> **整理时间**: 2026-10-30
+>
+> 原文链接: https://www.youtube.com/watch?v=bjZ2M7ThOBc
+
+---
+
+## 章节
+
+- [00:00 How to build AI agents with MCP](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=0s)
+- [00:52 How Cloud Run works](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=52s)
+- [02:11 Project setup and dependencies](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=131s)
+- [03:36 Environment variables and service account](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=216s)
+- [04:53 Building the agent with ADK](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=293s)
+- [06:53 Setting up MCP and Wikipedia Tools](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=413s)
+- [07:34 Creating researcher and presenter agents](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=454s)
+- [08:48 Root agent and workflow](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=528s)
+- [09:30 Deploying to Cloud Run](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=570s)
+- [10:43 Testing your live agent](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=643s)
+- [11:26 Next steps and improvements](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=686s)
+- [12:39 Cleanup and recap](https://www.youtube.com/watch?v=bjZ2M7ThOBc&t=759s)
+
+## 转写正文
+
+### 00:00 How to build AI agents with MCP
+
+If your AI agent only runs on your laptop, this video will show you exactly how to deploy it to Cloud Run. In the next few minutes, we will take your local AI agent and put it on the internet in a clean, reliable way using Cloud Run, the Agent Development Kit, and a secure connection to an MCP server. By the end of this video, you will have a working zoo tour guide agent running on Cloud Run with a public URL that you can click on and play around with. We'll also go step by step through the project, set up the code you need, the service account and permissions that make everything work, and also the single command that builds and deploys the container, as well as a quick test in the browser
+
+### 00:52 How Cloud Run works
+
+before we touch code. A quick mental model of how Cloud Run works. Think of it like a pop up shop. When a request arrives, it opens a container that runs your app when traffic spikes. Cloud Run brings up more copies for you. When nobody is visiting your agent, it scales to 0 and you pay nothing for the idle time. You bring a container that listens on a port and Cloud Run handles the rest from scaling, load balancing, TLS logs, and identity. That's why it's a great fit for deploying AI agents. Your agents can sit quietly until somebody actually wants to use it, and at that point it wakes up, serves a request, and goes back to sleep. Here's the plan. We'll create a simple Python project for the agent using ADK, and we will build tools. We'll point it to your MCP server. We'll set up a service account with the right permissions, and then run a single deploy command to deploy it. When it's done, you will have a URL which contains your agent. In order to follow along with this project, you need two things. You need a Google Cloud account, and also you need a project ID. To get your Google Cloud account.
+
+### 02:11 Project setup and dependencies
+
+Head on over to cloud.google.com. There's also a link for it in the description box below, which will allow you to easily create a free account by clicking that. Once you've created your free account, you then want to go and create a project ID. The instructions to create a project ID can be found in step three of this codelab. It's actually super easy to set up, and this codelab will walk you through exactly how you can do that. This codelab build and deploy an ADK agent that uses an MCP server on Cloud Run is the project that we are building in this video. And all of the steps that I'm going to be talking about in this video can also be found in all these steps in this codelab. So this is a great reference for you. And the link for this codelab can also be found in the description box below. So once you've created your Google Cloud account and you have set up your project ID, the home page of your Google Cloud Console should look something like this. And what you now need to do is open up Cloud Shell. You can click this icon at the top right hand corner in order to do that. Or you can type in Cloud Shell in the search bar at the very top. And that will also let you open that. Let's start off by confirming that you are on the right Google Cloud project. Open Cloud Shell in Google Cloud Console
+
+### 03:36 Environment variables and service account
+
+and run this one line to select your project. Next, enable the services that the deployment of our agent depends on. So Cloud Run needs the Run API, which helps to build containers using Cloud Build and Artifact Registry. Your agent calls Vertex AI models and compute APIs are required under the hood. This is a one time step per project. When it finishes, you'll see a long operation string with finished successfully. Next, create a Workspace for the agent in Cloud Shell. Make a fresh folder and step into it. Then create a requirements.txt file. Keep dependencies really simple in your container so that it stays small and cold starts are reasonable. For this lab, we'll be making use of ADK small Wikipedia helper as well as LangChain adapter. To keep the example really straightforward. Paste all of the libraries that are required, and make sure to pin the version so that you avoid any surprise breaking changes when libraries get updated. If you're following the codelab, use exactly the following commands. Now set a few environment variables so that the scripts and code can discover your project
+
+### 04:53 Building the agent with ADK
+
+and identity. You'll also create a dedicated service account that your Cloud Run service will use at runtime. That identity needs permission to call Vertex AI. And if your MCP server is protected, permissions to also invoke that server. Next, let's create a simple env file. This is where you declare your model choice and save the MCP server URL. Using a env file keeps secrets and configuration out of your code. In Cloud Run, you'll still configure sensitive items with environment variables or Secret Manager, but for this lab, we'll keep it really simple by using a env file. Add 1 line for the model now and next give your new service account permission to invoke the MCP server. This is the piece that many people forget, and it leads to a lot of 403 errors. So we need to bind the Run invoker role in your project so that your agent can call the MCP server securely. Now write the MCP server URL into the env file with configuration ready. Create a tiny package for your agent. The __init__.py file hints to Python that this directory is importable, and it also lets ADK know where your agent directory is located.
+
+So next let's add one import so that the package exposes the agent module. After you're done, open the new agent.py file. We'll start building the agent in small pieces in this file. At first step we have adding all of the imports and logging details. Then we will load environment variables, declare our model name and set up the tools. So first off, start copying this code and pasting it into your agent.py file.
+
+### 06:53 Setting up MCP and Wikipedia Tools
+
+This agent will use three capabilities: a simple function that stores the user's first prompt in a shared state so that it can be passed on to other agents, which are part of our zoo tour guide agent framework. And second, an MCP toolset that connects to the secure zoo MCP server, as well as the final tool, which is a Wikipedia lookup tool for looking up general facts. So let's start off with the imports and environment setup. Cloud Logging here is not just meant for neatness. It means you'll see your agent's prints and warnings show up in the Logs Explorer in Google Cloud Console, which
+
+### 07:34 Creating researcher and presenter agents
+
+is exactly what you want during testing. Next, add a tiny helper tool to store the visitor's first prompt. This becomes a glue between the greeter and the researcher. It writes into the shared tool state dictionary so that the next agent in the chain can read it. So keep this really simple and explicit. After that, we'll be setting up the MCP tool. Next, you'll read the MCP server URL from the env file that we created previously. If your MCP server requires authentication, which it should in production, you will fetch a signed ID token for the Cloud Run audience and pass it as a bearer token on each call. The ADK's streamable HTTP connection params makes this straightforward. Finally, add a general knowledge tool which makes use of the LangChain adapter and wraps the Wikipedia query so that you can keep this file focused on orchestration rather than search client code. With tools ready, we'll next define two specialist agents. The first is the researcher agent. It reads the user's prompts from the state and chooses between using the zoo MCP server or the Wikipedia
+
+### 08:48 Root agent and workflow
+
+tool that we've created. And if it requires it to use both, that's what it will do. In order to answer the question that you ask your agent. We're going to keep the instructions really short and concrete and focused on behavior rather than style. We're also going to be giving it an output key so that the next agent can pick up the results. The second agent that we're going to be creating is the presenter agent. It doesn't call tools, but it takes a raw research and writes a friendly response that starts with what's specific to the zoo, and then adds interesting general facts.
+
+### 09:30 Deploying to Cloud Run
+
+Next, we'll wrap both into a small workflow using a sequential workflow agent. It runs a researcher and then the formatter, passing the state through each step. You can evolve this later into more complex patterns. If you want to make use of loop agents or parallel agents. We'll finish off our agent file with something really important, which is called a root agent. This is the entry point for new conversations. And this is also what ADK expects. It greets the visitor, uses your small helper tool to save their first message into the state. And then once that context into the workflow that we've created, keeping the greeting separate makes the flow easy to follow in the logs when you debug. So that's all for the code in our agent file. Now wire up permissions so that the deployed service can actually call models. We'll first start off by sourcing our env file into the shell so that the model value is visible during build. And then we will grant Vertex AI user role to your service account. Without this role your service will start fine, but model calls will fail at runtime with permission errors. We're now ready to deploy. The ADK
+
+### 10:43 Testing your live agent
+
+ships a deploy command that does a lot for you. It builds a container from your source, pushes it to Artifact Registry, and creates a Cloud Run service with sensible defaults. We'll also be making use of uvx so that we don't have to install the CLI globally. Pass your project, region, the service name you want, along with a flag titled with UI so that you can get the ADK web UI up for quick testing. Also tell it which service account to run as and tag the service with a label so you can find it later. You'll get a couple of prompts. Cloud Run will ask to create a repository named Cloud Run
+
+### 11:26 Next steps and improvements
+
+source deploy in your region. If you don't have one yet, so say yes. It may ask if you want to allow unauthenticated access for this lab. Say yes so you can click the link from anywhere. In a production setup, you want to keep the service private and fronted with an authenticated proxy or a back end integration. When the command finishes, it prints a URL that looks something like this. That's your live agent. Click it and start playing around with ADK's web UI. You can start off by toggling token streaming in the right-hand corner, so you can watch the model think in real time. Type in hello and press Enter and see what you're greeted with. Then ask something like, Where can I find the polar bears here? And what do they eat in the wild? And watch the workflow happen. You'll see our researcher agent calling both our MCP server for the enclosure details, and also calling the Wikipedia tool for info on the polar bear's diet. When you're done testing, clean up so you don't keep resources around. You can delete just the service, or you can also delete the build repository if you created it just
+
+### 12:39 Cleanup and recap
+
+for this lab. The two lines below remove the Cloud Run service and the default source deploy repository in the same region. Add the quiet flag if you want to skip prompts. And before we wrap up, a final check on what we just did: deployed an AI agent that knows how to use tools exposed by an MCP server, as well as the Wikipedia tool. And you did it in a way that scales, sleeps, logs, and respects identity. Cloud Run gives that system a home without asking you to manage machines. And because you used MCP for tools, you can keep adding capabilities without rewriting the glue. The link for this lab will be in the description box below. I hope you found this video helpful and happy building.

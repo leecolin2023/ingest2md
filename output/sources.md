@@ -117,3 +117,6 @@
 | https://www.douyin.com/video/7683871840766414090 | DouyinExtractor | `金融Agent面试有感_;之前项目烂尾,现在重新探索和规 金融自研 AI Agent 岗位，上一个候选人把项目做烂。面试重点考察 Agent 设计、文档、记忆存__7683871840766414090.md` | 2026-10-16 | 是 |
 | https://www.douyin.com/video/7682777314991672617 | DouyinExtractor | `面AI Agent通关，Java老底子帮了我大忙 Agent 流程、调优全部聊透，结尾突出来三道 Java 八股。感慨：不会八股的程序员不是好程序员，有 Jav__7682777314991672617.md` | 2026-10-16 | 是 |
 | https://www.douyin.com/video/7687905443414396200 | DouyinExtractor | `面试官只要敢问你意图识别，按我这么说，20k到手！ #ai #ai应用开发 #大模型开发 #懂王ai__7687905443414396200.md` | 2026-10-16 | 是 |
+| https://www.douyin.com/video/7690807740213529882 | DouyinExtractor | `20261026__Plan 模式已经淘汰了吗？ Claude Code 团队的 Boris Cherny 说：“plan mode was useful, and is no longer useful.” 翻译翻.md` | 2026-10-26 | 否 |
+| https://www.douyin.com/video/7700889548691197199 | DouyinExtractor | `20261026__两年 RAG 开发经验，被一个 “检索幻觉” 问题干沉默了… #AI大模型 #大模型 #RAG #Agent #程序员.md` | 2026-10-26 | 否 |
+| https://www.douyin.com/video/7686445668923231538 | DouyinExtractor | `20261027__字节面试题，Harness 的五要素是什么？ 面试官问你：“Harness 的五要素是什么？除了 Context 和 Tool Use 你.md` | 2026-10-27 | 否 |
