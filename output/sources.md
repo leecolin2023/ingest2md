@@ -120,3 +120,4 @@
 | https://www.douyin.com/video/7690807740213529882 | DouyinExtractor | `20261026__Plan 模式已经淘汰了吗？ Claude Code 团队的 Boris Cherny 说：“plan mode was useful, and is no longer useful.” 翻译翻.md` | 2026-10-26 | 否 |
 | https://www.douyin.com/video/7700889548691197199 | DouyinExtractor | `20261026__两年 RAG 开发经验，被一个 “检索幻觉” 问题干沉默了… #AI大模型 #大模型 #RAG #Agent #程序员.md` | 2026-10-26 | 否 |
 | https://www.douyin.com/video/7686445668923231538 | DouyinExtractor | `20261027__字节面试题，Harness 的五要素是什么？ 面试官问你：“Harness 的五要素是什么？除了 Context 和 Tool Use 你.md` | 2026-10-27 | 否 |
+| https://www.douyin.com/video/7701258677180812559 | DouyinExtractor | `20261030__Top K和Top N到底如何取值？ #ai #ai应用开发 #大模型开发 #懂王ai.md` | 2026-10-30 | 否 |
