@@ -26,3 +26,9 @@
 - 每个视频目录下的 `content.md` 是按章节整理的 Markdown 文字稿，`transcript.txt` 是纯文本版。
 - 时间戳为章节起点，点击章节目录可跳转到 YouTube 对应位置。
 - 自动字幕可能存在少量识别错误；已做局部校对，但未改变原意、未翻译、未总结。
+
+## 中文整理稿
+
+六集视频已按 [Skill-Repository / Transcript Refinement](https://github.com/leecolin2023/skill-repository/blob/main/skills/transcript-refinement/SKILL.md) 的保真规则完成**中文翻译与语言优化**，并保留原视频章节链接。英文 `content.md` 和 `transcript.txt` 均未覆盖。中文稿统一存放于 [HarnessLab · Google Agent 教程索引](https://github.com/leecolin2023/HarnessLab/blob/main/materials/agent-runtime/20261030__Modern%20AI%20Agents%20-%20From%20Theory%20to%20Production/README.md)。
+
+说明：这是忠实转写整理，不等同于独立事实核查或视频画面中代码的完整复原。
