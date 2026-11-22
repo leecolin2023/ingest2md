@@ -121,3 +121,10 @@
 | https://www.douyin.com/video/7700889548691197199 | DouyinExtractor | `20261026__两年 RAG 开发经验，被一个 “检索幻觉” 问题干沉默了… #AI大模型 #大模型 #RAG #Agent #程序员.md` | 2026-10-26 | 否 |
 | https://www.douyin.com/video/7686445668923231538 | DouyinExtractor | `20261027__字节面试题，Harness 的五要素是什么？ 面试官问你：“Harness 的五要素是什么？除了 Context 和 Tool Use 你.md` | 2026-10-27 | 否 |
 | https://www.douyin.com/video/7701258677180812559 | DouyinExtractor | `20261030__Top K和Top N到底如何取值？ #ai #ai应用开发 #大模型开发 #懂王ai.md` | 2026-10-30 | 否 |
+| https://www.douyin.com/video/7701218052940443059 | DouyinExtractor | `20261102__Agent怎么突破上下文窗口上限？ #这个ai教程不烧心 #Agent #我在抖音学ai #大模型 #用ai提效的焚决.md` | 2026-11-02 | 否 |
+| https://www.douyin.com/video/7541640816541928742 | DouyinExtractor | `20261122__已生，待产包别跟着新手妈妈抄作业了，一堆坑！总结了实用待产包清单，没有一件打酱油的，纯自用.md` | 2026-11-22 | 否 |
+| https://www.douyin.com/video/7675611317059548340 | DouyinExtractor | `20261122__生完以后才知道，待产包里这些东西还是准备少了 #待产包 #母婴待产包必备 #新手妈妈必看#波咯咯吸奶.md` | 2026-11-22 | 否 |
+| https://www.douyin.com/video/7507900200423443724 | DouyinExtractor | `20261122__产后复盘顺产住院3天待产包用品，哪些用得上哪些用不上，给没生的姐妹做个参考。祝姐妹们一路绿灯.md` | 2026-11-22 | 否 |
+| https://www.douyin.com/video/7513183180368350524 | DouyinExtractor | `20261122__顺产待产包复盘来啦！说真话！生完之后的待产包才是真实用， 不踩雷，放心抄作业#待产包 #待产包清.md` | 2026-11-22 | 否 |
+| https://www.douyin.com/video/7628176160635047222 | DouyinExtractor | `20261122__应该还没有人告诉你待产包还需要准备这些 #dou出健康知识宝藏 #猴哥聊孕产 #待产包 #生孩子.md` | 2026-11-22 | 否 |
+| https://www.douyin.com/video/7639630660466003226 | DouyinExtractor | `20261122__待产包清单，各位孕妈和家属请查收 #孕妇 #待产包 #待产包清单.md` | 2026-11-22 | 否 |
