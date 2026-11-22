@@ -128,3 +128,4 @@
 | https://www.douyin.com/video/7513183180368350524 | DouyinExtractor | `20261122__顺产待产包复盘来啦！说真话！生完之后的待产包才是真实用， 不踩雷，放心抄作业#待产包 #待产包清.md` | 2026-11-22 | 否 |
 | https://www.douyin.com/video/7628176160635047222 | DouyinExtractor | `20261122__应该还没有人告诉你待产包还需要准备这些 #dou出健康知识宝藏 #猴哥聊孕产 #待产包 #生孩子.md` | 2026-11-22 | 否 |
 | https://www.douyin.com/video/7639630660466003226 | DouyinExtractor | `20261122__待产包清单，各位孕妈和家属请查收 #孕妇 #待产包 #待产包清单.md` | 2026-11-22 | 否 |
+| https://www.bilibili.com/video/BV1ZYNT6hEEg?p=1 | BilibiliExtractor | `20261122__最新大厂面试，AI与系统设计，问完直接结束.md` | 2026-11-22 | 否 |
